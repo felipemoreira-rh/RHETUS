@@ -135,7 +135,17 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
         if df_c.empty:
             st.info("Nenhum candidato nesta vaga.")
         else:
-            opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
+            # LISTA ATUALIZADA COM 'TESTE TÉCNICO'
+            opcoes_status = [
+                "Vaga aberta", 
+                "Triagem", 
+                "Entrevista RH", 
+                "Teste Técnico", # <-- Novo status adicionado aqui
+                "Entrevista gestor", 
+                "Solicitação de documentos", 
+                "Solicitação de contratos", 
+                "Finalizada"
+            ]
             
             for idx, cand in df_c.iterrows():
                 with st.container():
@@ -143,10 +153,14 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
                     
                     c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1])
                     
-                    idx_status = opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0
+                    # Tenta encontrar o índice do status atual; se não achar (ex: status antigo), volta para o 0
+                    try:
+                        idx_status = opcoes_status.index(cand['status_geral'])
+                    except ValueError:
+                        idx_status = 0
+
                     novo_status = c1.selectbox("Mudar Status", opcoes_status, index=idx_status, key=f"st_{cand['id']}")
                     
-                    # Tratamento de datas nulas
                     d_rh = cand['entrevista_rh'] if pd.notnull(cand['entrevista_rh']) else datetime.now()
                     d_gs = cand['entrevista_gestor'] if pd.notnull(cand['entrevista_gestor']) else datetime.now()
                     
@@ -169,7 +183,6 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
                             conn.commit()
                         st.rerun()
                 st.markdown("<br>", unsafe_allow_html=True)
-
 # --- 10. NOVA ABA: ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     st.subheader("Processo de Admissão")
@@ -218,3 +231,4 @@ elif menu == "🚀 ONBOARDING":
                 conn.commit()
             st.success("Progresso salvo!")
             st.rerun()
+
