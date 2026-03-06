@@ -266,58 +266,59 @@ elif menu == "🏢 VAGAS":
                         st.session_state[f"edit_vaga_{v_key}"] = False
                         st.rerun()
 
-# --- 9. CANDIDATOS (LISTA LIMPA COM CLIQUE PARA ABRIR) ---
+# --- 9. CANDIDATOS (VERSÃO LIMPA COM EXPANDER) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     
     if not df_vagas.empty:
-        # 1. Filtro de Vaga no topo para não poluir a tela
-        v_sel = st.selectbox("Filtrar candidatos por vaga:", df_vagas["nome_vaga"].tolist())
+        # Seletor de vaga no topo
+        v_sel = st.selectbox("Selecione a Vaga:", df_vagas["nome_vaga"].tolist())
         st.divider()
         
         df_c = carregar_candidatos_vaga(v_sel)
         
         if df_c.empty:
-            st.info(f"Nenhum candidato encontrado para a vaga: {v_sel}")
+            st.info("Nenhum candidato para esta vaga.")
         else:
             opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Teste Técnico", "Entrevista gestor", "Entrevista Cultura", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
             
-            # 2. LOOP DE CANDIDATOS USANDO EXPANDER
+            # O SEGREDO ESTÁ AQUI: Cada candidato dentro de um expander
             for _, cand in df_c.iterrows():
-                # O título do expander é o nome do candidato. Só abre se clicar.
-                with st.expander(f"👤 {cand['candidato'].upper()} (Status: {cand['status_geral']})"):
+                # Título da barra que você vai clicar
+                with st.expander(f"👤 {cand['candidato']} | {cand['status_geral']}"):
                     
+                    # Tudo que está aqui dentro só aparece ao clicar no nome acima
                     st.markdown("---")
-                    col_status, col_agenda = st.columns([1, 1.5])
+                    col1, col2 = st.columns([1, 2])
                     
-                    with col_status:
-                        st.write("**Mudar Etapa:**")
+                    with col1:
+                        st.markdown("**Status da Etapa**")
                         n_status = st.selectbox(
-                            "Status", 
+                            "Mudar Status", 
                             opcoes_status, 
                             index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, 
-                            key=f"status_sel_{cand['id']}"
+                            key=f"status_{cand['id']}",
+                            label_visibility="collapsed"
                         )
                     
-                    with col_agenda:
-                        st.write("**Agenda de Entrevistas:**")
+                    with col2:
+                        st.markdown("**Agendamentos**")
                         c_rh, c_gs, c_cu = st.columns(3)
                         
-                        # Função interna para gerenciar as datas
-                        def gerenciar_data(col, label, data_db, chave):
-                            check = col.checkbox(label, value=pd.notnull(data_db), key=f"chk_{chave}_{cand['id']}")
+                        # Função para simplificar as datas
+                        def input_data(col, label, data_db, k):
+                            check = col.checkbox(label, value=pd.notnull(data_db), key=f"ch_{k}_{cand['id']}")
                             if check:
-                                return col.date_input("Data", value=data_db if pd.notnull(data_db) else datetime.now(), key=f"dt_{chave}_{cand['id']}")
+                                return col.date_input("Data", value=data_db if pd.notnull(data_db) else datetime.now(), key=f"dt_{k}_{cand['id']}", label_visibility="collapsed")
                             return None
 
-                        res_rh = gerenciar_data(c_rh, "RH", cand['entrevista_rh'], "rh")
-                        res_gs = gerenciar_data(c_gs, "Gestor", cand['entrevista_gestor'], "gs")
-                        res_cu = gerenciar_data(c_cu, "Cultura", cand.get('entrevista_cultura'), "cu")
-                    
-                    st.write("") # Espaçamento
-                    
-                    # 3. Botão de Salvar específico para este candidato
-                    if st.button(f"💾 SALVAR DADOS DE {cand['candidato'].split()[0].upper()}", key=f"btn_save_{cand['id']}", use_container_width=True):
+                        res_rh = input_data(c_rh, "RH", cand['entrevista_rh'], "rh")
+                        res_gs = input_data(c_gs, "Gestor", cand['entrevista_gestor'], "gs")
+                        res_cu = input_data(c_cu, "Cultura", cand.get('entrevista_cultura'), "cu")
+
+                    st.write("")
+                    # Botão de salvar agora fica dentro do expander
+                    if st.button(f"💾 SALVAR ALTERAÇÕES: {cand['candidato'].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
                         with engine.connect() as conn:
                             conn.execute(text("""
                                 UPDATE candidatos 
@@ -325,11 +326,11 @@ elif menu == "⚙️ CANDIDATOS":
                                 WHERE id=:id
                             """), {"s": n_status, "rh": res_rh, "gs": res_gs, "cu": res_cu, "id": cand['id']})
                             conn.commit()
-                        st.success(f"Dados de {cand['candidato']} atualizados!")
+                        st.success("Atualizado!")
                         st.rerun()
     else:
-        st.warning("Cadastre uma vaga na aba VAGAS para visualizar os candidatos.")
-# --- 10. ONBOARDING ---
+        st.warning("Crie uma vaga primeiro.")
+
 # --- 10. ONBOARDING (NOME CORRIGIDO) ---
 elif menu == "🚀 ONBOARDING":
     st.subheader("Onboarding de Aprovados")
@@ -400,6 +401,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
         st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
+
 
 
 
