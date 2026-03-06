@@ -266,60 +266,58 @@ elif menu == "🏢 VAGAS":
                         st.session_state[f"edit_vaga_{v_key}"] = False
                         st.rerun()
 
-# --- 9. CANDIDATOS (LISTA EXPANSÍVEL E LIMPA) ---
+# --- 9. CANDIDATOS (LISTA LIMPA COM CLIQUE PARA ABRIR) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     
     if not df_vagas.empty:
-        # Seletor de Vaga no topo para filtrar a lista
-        v_sel = st.selectbox("Selecione a Vaga para filtrar os candidatos:", df_vagas["nome_vaga"].tolist())
+        # 1. Filtro de Vaga no topo para não poluir a tela
+        v_sel = st.selectbox("Filtrar candidatos por vaga:", df_vagas["nome_vaga"].tolist())
         st.divider()
         
         df_c = carregar_candidatos_vaga(v_sel)
         
         if df_c.empty:
-            st.info(f"Nenhum candidato vinculado à vaga: {v_sel}")
+            st.info(f"Nenhum candidato encontrado para a vaga: {v_sel}")
         else:
             opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Teste Técnico", "Entrevista gestor", "Entrevista Cultura", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
             
+            # 2. LOOP DE CANDIDATOS USANDO EXPANDER
             for _, cand in df_c.iterrows():
-                # O NOME DO CANDIDATO VIRA O TÍTULO DO EXPANDER
-                # Adicionamos o status atual ao lado do nome para facilitar a batida de olho
-                with st.expander(f"👤 {cand['candidato'].upper()} | Status Atual: {cand['status_geral']}"):
+                # O título do expander é o nome do candidato. Só abre se clicar.
+                with st.expander(f"👤 {cand['candidato'].upper()} (Status: {cand['status_geral']})"):
                     
-                    st.markdown("#### Gerenciar Candidato")
-                    
-                    # Colunas internas para organização
-                    col_status, col_datas = st.columns([1, 2])
+                    st.markdown("---")
+                    col_status, col_agenda = st.columns([1, 1.5])
                     
                     with col_status:
-                        st.write("**Alterar Etapa:**")
+                        st.write("**Mudar Etapa:**")
                         n_status = st.selectbox(
                             "Status", 
                             opcoes_status, 
                             index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, 
-                            key=f"s_{cand['id']}",
-                            label_visibility="collapsed"
+                            key=f"status_sel_{cand['id']}"
                         )
                     
-                    with col_datas:
-                        st.write("**Agendamentos:**")
+                    with col_agenda:
+                        st.write("**Agenda de Entrevistas:**")
                         c_rh, c_gs, c_cu = st.columns(3)
                         
-                        # Função auxiliar para os campos de data
-                        def campo_dt_limpo(col, label, val, k):
-                            if col.checkbox(label, value=pd.notnull(val), key=f"ck_{k}"):
-                                return col.date_input("Data", value=val if pd.notnull(val) else datetime.now(), key=f"dt_{k}", label_visibility="collapsed")
+                        # Função interna para gerenciar as datas
+                        def gerenciar_data(col, label, data_db, chave):
+                            check = col.checkbox(label, value=pd.notnull(data_db), key=f"chk_{chave}_{cand['id']}")
+                            if check:
+                                return col.date_input("Data", value=data_db if pd.notnull(data_db) else datetime.now(), key=f"dt_{chave}_{cand['id']}")
                             return None
 
-                        res_rh = campo_dt_limpo(c_rh, "RH", cand['entrevista_rh'], f"rh_{cand['id']}")
-                        res_gs = campo_dt_limpo(c_gs, "Gestor", cand['entrevista_gestor'], f"gs_{cand['id']}")
-                        res_cu = campo_dt_limpo(c_cu, "Cultura", cand.get('entrevista_cultura'), f"cu_{cand['id']}")
+                        res_rh = gerenciar_data(c_rh, "RH", cand['entrevista_rh'], "rh")
+                        res_gs = gerenciar_data(c_gs, "Gestor", cand['entrevista_gestor'], "gs")
+                        res_cu = gerenciar_data(c_cu, "Cultura", cand.get('entrevista_cultura'), "cu")
                     
-                    st.divider()
+                    st.write("") # Espaçamento
                     
-                    # Botão de Salvar centralizado e com cor de destaque
-                    if st.button(f"💾 SALVAR ALTERAÇÕES EM {cand['candidato'].split()[0].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
+                    # 3. Botão de Salvar específico para este candidato
+                    if st.button(f"💾 SALVAR DADOS DE {cand['candidato'].split()[0].upper()}", key=f"btn_save_{cand['id']}", use_container_width=True):
                         with engine.connect() as conn:
                             conn.execute(text("""
                                 UPDATE candidatos 
@@ -327,10 +325,10 @@ elif menu == "⚙️ CANDIDATOS":
                                 WHERE id=:id
                             """), {"s": n_status, "rh": res_rh, "gs": res_gs, "cu": res_cu, "id": cand['id']})
                             conn.commit()
-                        st.success("Dados atualizados!")
+                        st.success(f"Dados de {cand['candidato']} atualizados!")
                         st.rerun()
     else:
-        st.warning("Cadastre uma vaga primeiro para gerenciar candidatos.")
+        st.warning("Cadastre uma vaga na aba VAGAS para visualizar os candidatos.")
 # --- 10. ONBOARDING ---
 # --- 10. ONBOARDING (NOME CORRIGIDO) ---
 elif menu == "🚀 ONBOARDING":
@@ -402,6 +400,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
         st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
+
 
 
 
