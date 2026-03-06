@@ -97,7 +97,7 @@ elif menu == "🏢 VAGAS":
     with st.expander("➕ CADASTRAR NOVA VAGA"):
         with st.form("n_vaga"):
             nv = st.text_input("Nome da Vaga"); gv = st.text_input("Gestor")
-            av = st.selectbox("Área", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
+            av = st.selectbox("Área", ["Comercial", "Operações", "RH", "Tecnologia", "RH", "Marketing"])
             if st.form_submit_button("CRIAR"):
                 with engine.connect() as conn:
                     conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)"), {"n": nv, "a": av, "g": gv, "d": datetime.now().date()}); conn.commit()
@@ -243,6 +243,7 @@ elif menu == "🚀 ONBOARDING":
             st.success("Progresso salvo!"); st.rerun()
     else:
         st.info("💡 Mova candidatos para o status 'Finalizada' para iniciar o Onboarding.")
+
 
 
 
