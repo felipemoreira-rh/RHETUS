@@ -69,16 +69,17 @@ def carregar_candidatos_vaga(v_nome):
 def carregar_aprovados():
     return pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada' OR aprovacao_final = 'Sim' ORDER BY candidato", engine)
 
-# --- 6. SIDEBAR ---
+# --- 6. SIDEBAR (NOMES DAS ABAS ATUALIZADOS) ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
-    menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD", "🏢 GESTÃO DE VAGAS", "⚙️ FLUXO DE CANDIDATOS", "🚀 ONBOARDING"])
+    # Nomes das abas atualizados conforme solicitado
+    menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 7. DASHBOARD ---
-if menu == "📊 DASHBOARD":
+# --- 7. INDICADORES (ANTIGO DASHBOARD) ---
+if menu == "📊 INDICADORES":
     df_c = pd.read_sql("SELECT * FROM candidatos", engine)
     if not df_c.empty:
         c1, c2, c3 = st.columns(3)
@@ -89,8 +90,8 @@ if menu == "📊 DASHBOARD":
         fig = px.pie(df_c, names="status_geral", hole=.4, color_discrete_sequence=['#8DF768', '#4A4A4A', '#222222'])
         st.plotly_chart(fig, use_container_width=True)
 
-# --- 8. GESTÃO DE VAGAS ---
-elif menu == "🏢 GESTÃO DE VAGAS":
+# --- 8. VAGAS (ANTIGO GESTÃO DE VAGAS) ---
+elif menu == "🏢 VAGAS":
     st.subheader("Painel de Vagas")
     with st.expander("➕ CRIAR NOVA VAGA"):
         with st.form("f_vaga"):
@@ -134,7 +135,6 @@ elif menu == "🏢 GESTÃO DE VAGAS":
                     
                     if st.form_submit_button("SALVAR"):
                         with engine.connect() as conn:
-                            # Bloco de atualização com parâmetros fechados corretamente
                             params = {"n": novo_n, "g": novo_g, "s": novo_s, "da": dt_ab, "df": dt_fc}
                             if v_id is not None:
                                 params["id"] = v_id
@@ -146,8 +146,8 @@ elif menu == "🏢 GESTÃO DE VAGAS":
                         st.session_state[f"edit_vaga_{v_key}"] = False
                         st.rerun()
 
-# --- 9. FLUXO DE CANDIDATOS ---
-elif menu == "⚙️ FLUXO DE CANDIDATOS":
+# --- 9. CANDIDATOS (ANTIGO FLUXO DE CANDIDATOS) ---
+elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     if not df_vagas.empty:
         v_sel = st.selectbox("Vaga:", df_vagas["nome_vaga"].tolist())
