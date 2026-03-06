@@ -95,7 +95,7 @@ elif menu == "🏢 GESTÃO DE VAGAS":
                     conn.commit()
                 st.rerun()
 
-# --- 9. FLUXO DE CANDIDATOS (ATUALIZADO) ---
+# --- 9. FLUXO DE CANDIDATOS (COM DATAS OPCIONAIS) ---
 elif menu == "⚙️ FLUXO DE CANDIDATOS":
     df_vagas = carregar_vagas()
     if df_vagas.empty:
@@ -108,7 +108,6 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
         if df_c.empty:
             st.info("Nenhum candidato nesta vaga.")
         else:
-            # STATUS ATUALIZADOS
             opcoes_status = [
                 "Vaga aberta", "Triagem", "Entrevista RH", "Teste Técnico", 
                 "Entrevista Cultura", "Entrevista gestor", "Solicitação de documentos", 
@@ -119,21 +118,27 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
                 with st.container():
                     st.markdown(f'<div class="candidate-card"><div class="candidate-name">{cand["candidato"]}</div><div class="candidate-status">{cand["status_geral"]}</div></div>', unsafe_allow_html=True)
                     
-                    # Aumentei para 5 colunas para caber a nova data
-                    c1, c2, c3, c4, c5 = st.columns([2, 1.2, 1.2, 1.2, 0.5])
+                    # Seletor de Status
+                    c_status, c_rh, c_cult, c_gest, c_btn = st.columns([2, 1.2, 1.2, 1.2, 0.5])
                     
-                    novo_status = c1.selectbox("Status", opcoes_status, index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, key=f"st_{cand['id']}")
+                    novo_status = c_status.selectbox("Status", opcoes_status, index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, key=f"st_{cand['id']}")
                     
-                    # Datas (Tratamento de nulos)
-                    d_rh = cand['entrevista_rh'] if pd.notnull(cand['entrevista_rh']) else datetime.now()
-                    d_cult = cand['entrevista_cultura'] if ('entrevista_cultura' in cand and pd.notnull(cand['entrevista_cultura'])) else datetime.now()
-                    d_gs = cand['entrevista_gestor'] if pd.notnull(cand['entrevista_gestor']) else datetime.now()
+                    # --- FUNÇÃO INTERNA PARA GERAR DATA OPCIONAL ---
+                    def campo_data_opcional(coluna_st, label, valor_banco, chave):
+                        # Se o valor no banco for nulo, o checkbox começa desmarcado
+                        tem_data = coluna_st.checkbox(f"Agendar {label}", value=pd.notnull(valor_banco), key=f"check_{chave}")
+                        if tem_data:
+                            data_padrao = valor_banco if pd.notnull(valor_banco) else datetime.now()
+                            return coluna_st.date_input(f"Data {label}", value=data_padrao, key=f"date_{chave}")
+                        return None
+
+                    # Renderização dos campos de data
+                    res_rh = campo_data_opcional(c_rh, "RH", cand['entrevista_rh'], f"rh_{cand['id']}")
+                    res_cult = campo_data_opcional(c_cult, "Cultura", cand.get('entrevista_cultura'), f"cult_{cand['id']}")
+                    res_gest = campo_data_opcional(c_gest, "Gestor", cand['entrevista_gestor'], f"gs_{cand['id']}")
                     
-                    data_rh = c2.date_input("📅 RH", value=d_rh, key=f"rh_{cand['id']}")
-                    data_cult = c3.date_input("📅 Cultura", value=d_cult, key=f"cult_{cand['id']}")
-                    data_gestor = c4.date_input("📅 Gestor", value=d_gs, key=f"gs_{cand['id']}")
-                    
-                    if c5.button("💾", key=f"sv_{cand['id']}"):
+                    # Botão Salvar
+                    if c_btn.button("💾", key=f"sv_{cand['id']}"):
                         with engine.connect() as conn:
                             conn.execute(text("""
                                 UPDATE candidatos SET 
@@ -142,9 +147,16 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
                                 entrevista_cultura = :cult,
                                 entrevista_gestor = :gs 
                                 WHERE id = :id
-                            """), {"s": novo_status, "rh": data_rh, "cult": data_cult, "gs": data_gestor, "id": cand['id']})
+                            """), {
+                                "s": novo_status, 
+                                "rh": res_rh, 
+                                "cult": res_cult, 
+                                "gs": res_gest, 
+                                "id": cand['id']
+                            })
                             conn.commit()
                         st.rerun()
+                st.markdown("<br>", unsafe_allow_html=True)
 
 # --- 10. ONBOARDING (Mantido) ---
 elif menu == "🚀 ONBOARDING":
@@ -169,3 +181,4 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
