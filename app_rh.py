@@ -42,52 +42,60 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS (LIMPEZA TOTAL DO MENU LATERAL) ---
+# --- 4. CSS (REMOÇÃO AGRESSIVA DE BOLINHAS E SELETORES) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
     
-    /* Fontes e Fundo da Sidebar */
+    /* Fontes e Sidebar */
     html, body, [class*="css"], [data-testid="stSidebar"] { 
         font-family: 'Space Grotesk', sans-serif !important; 
     }
     [data-testid="stSidebar"] { background-color: #0E1117 !important; }
 
-    /* 1. ESCONDE A BOLINHA DE SELEÇÃO E O CONTAINER DO BOTÃO */
-    [data-testid="stSidebar"] [data-testid="stWidgetSelectionColumn"] {
+    /* 1. ESCONDE O CÍRCULO/BOTÃO (RADIO) EM SI */
+    [data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stWidgetSelectionColumn"] {
         display: none !important;
     }
 
-    /* 2. REMOVE QUALQUER BORDA OU FUNDO AO REDOR DO TEXTO */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
-        background-color: transparent !important;
-        border: none !important;
+    /* 2. REMOVE O ESPAÇAMENTO QUE A BOLINHA OCUPAVA */
+    [data-testid="stSidebar"] div[role="radiogroup"] > div {
+        gap: 0px !important;
     }
 
-    /* 3. ESTILO DO TEXTO DO MENU */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    /* 3. LIMPA QUALQUER FUNDO CINZA/VERMELHO AO CLICAR */
+    [data-testid="stSidebar"] div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
-        padding: 8px 0px !important;
+        outline: none !important;
+        padding: 10px 0px !important;
+        cursor: pointer;
     }
 
-    /* Texto Inativo (Cinza) */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p {
+    /* 4. ESTILO DO TEXTO (Navegação Limpa) */
+    /* Texto Inativo */
+    [data-testid="stSidebar"] div[role="radiogroup"] label p {
         color: #777777 !important;
         font-size: 18px !important;
         font-weight: 400 !important;
-        transition: color 0.3s ease;
+        margin-left: 0px !important;
+        transition: all 0.3s ease;
     }
 
-    /* Texto Selecionado (Verde Etus e Negrito) */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p {
+    /* Texto Selecionado (Destaque em Verde Etus) */
+    [data-testid="stSidebar"] div[role="radiogroup"] input:checked + div p {
         color: #8DF768 !important;
         font-weight: 700 !important;
         font-size: 20px !important;
     }
 
-    /* --- ANIMAÇÃO DA BOLA DE FUTEBOL AMERICANO (CARREGAMENTO) --- */
+    /* Hover no texto */
+    [data-testid="stSidebar"] div[role="radiogroup"] label:hover p {
+        color: #FFFFFF !important;
+    }
+
+    /* --- CARREGAMENTO: BOLA DE FUTEBOL AMERICANO --- */
     [data-testid="stStatusWidget"] { visibility: hidden; }
     [data-testid="stStatusWidget"]::before {
         content: '🏈'; 
@@ -359,6 +367,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
         st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
+
 
 
 
