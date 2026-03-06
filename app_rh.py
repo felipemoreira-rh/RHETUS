@@ -159,7 +159,8 @@ elif menu == "⚙️ FLUXO DE CANDIDATOS":
                             })
                             conn.commit()
                         st.toast("Dados salvos!")
-                        st.
+                        st.rerun()
+                st.markdown("<br>", unsafe_allow_html=True)
 
 # --- 10. ONBOARDING (Mantido) ---
 elif menu == "🚀 ONBOARDING":
@@ -184,5 +185,6 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
