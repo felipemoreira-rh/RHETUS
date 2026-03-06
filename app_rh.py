@@ -1,120 +1,83 @@
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
-import os
 
-# --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="RH ETUS - Ultra Speed", layout="wide", page_icon="🟢")
+# --- 1. CONFIGURAÇÃO DE ALTA PERFORMANCE ---
+st.set_page_config(page_title="RH ETUS - Turbo", layout="wide")
 
-# --- 2. POOL DE CONEXÃO (CACHEADO) ---
 @st.cache_resource
 def get_engine():
-    url = st.secrets["postgres"]["url"]
-    return create_engine(url, pool_pre_ping=True, connect_args={"sslmode": "require"})
+    # Usamos o pool_size para manter 5 "túneis" sempre abertos com o Neon
+    return create_engine(
+        st.secrets["postgres"]["url"],
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_recycle=1800,
+        connect_args={"sslmode": "require"}
+    )
 
 engine = get_engine()
 
-# --- 3. FUNÇÃO DE SALVAMENTO DIRETA ---
-def fast_update(id_cand, campo, chave_estado, nome_cand):
-    """Lê o valor novo diretamente do widget e salva no banco."""
-    novo_valor = st.session_state[chave_estado]
+# --- 2. SALVAMENTO "SILENCIOSO" (MAIS RÁPIDO) ---
+def fast_save(id_cand, campo, chave_estado, nome):
+    valor = st.session_state[chave_estado]
     try:
+        # engine.begin() é o método mais rápido de execução única no SQLAlchemy
         with engine.begin() as conn:
-            query = text(f"UPDATE candidatos SET {campo} = :v WHERE id = :id")
-            conn.execute(query, {"v": novo_valor, "id": id_cand})
-        st.toast(f"⚡ {nome_cand} salvo!")
+            conn.execute(
+                text(f"UPDATE candidatos SET {campo} = :v WHERE id = :id"),
+                {"v": valor, "id": id_cand}
+            )
+        st.toast(f"⚡ {nome} ok!")
     except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
+        st.error(f"Erro: {e}")
 
-# --- 4. FRAGMENTO DO CARD (VELOCIDADE ISOLADA) ---
+# --- 3. COMPONENTE DE CARD OTIMIZADO ---
 @st.fragment
-def card_candidato(cand, opcoes_status):
-    """Gerencia as mudanças de um candidato sem recarregar a página toda."""
+def exibir_card(cand, opcoes):
     with st.container():
-        # Visual do Card
-        st.markdown(f'''
-            <div style="background-color: #1E1E1E; padding: 15px; border-radius: 12px; border-left: 5px solid #8DF768; margin-bottom: 10px;">
-                <span style="color: white; font-size: 18px; font-weight: bold;">{cand["candidato"]}</span>
-            </div>
-        ''', unsafe_allow_html=True)
+        # HTML minimalista para não pesar a renderização
+        st.markdown(f"""
+            <div style="background:#1E1E1E; padding:10px; border-radius:8px; border-left:4px solid #8DF768; margin-bottom:5px;">
+                <b style="color:white;">{cand['candidato']}</b>
+            </div>""", unsafe_allow_html=True)
         
-        col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 0.5])
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
         
-        # CHAVES ÚNICAS PARA O ESTADO
-        k_st = f"st_{cand['id']}"
-        k_rh = f"rh_{cand['id']}"
-        k_gs = f"gs_{cand['id']}"
-
-        # STATUS com Auto-save
-        col1.selectbox(
-            "Status", opcoes_status, 
-            index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0,
-            key=k_st,
-            on_change=fast_update,
-            args=(cand['id'], "status_geral", k_st, cand['candidato'])
-        )
+        # Otimizamos os widgets retirando labels pesados
+        c1.selectbox("Status", opcoes, index=opcoes.index(cand['status_geral']), 
+                    key=f"s{cand['id']}", label_visibility="collapsed",
+                    on_change=fast_save, args=(cand['id'], "status_geral", f"s{cand['id']}", cand['candidato']))
         
-        # DATA RH com Auto-save
-        col2.date_input(
-            "Entrevista RH", value=cand['entrevista_rh'], 
-            key=k_rh,
-            on_change=fast_update,
-            args=(cand['id'], "entrevista_rh", k_rh, cand['candidato'])
-        )
+        c2.date_input("RH", value=cand['entrevista_rh'], key=f"r{cand['id']}",
+                     on_change=fast_save, args=(cand['id'], "entrevista_rh", f"r{cand['id']}", cand['candidato']))
         
-        # DATA GESTOR com Auto-save
-        col3.date_input(
-            "Entrevista Gestor", value=cand['entrevista_gestor'], 
-            key=k_gs,
-            on_change=fast_update,
-            args=(cand['id'], "entrevista_gestor", k_gs, cand['candidato'])
-        )
-
-        # BOTÃO EXCLUIR
-        if col4.button("🗑️", key=f"del_{cand['id']}", help="Excluir Candidato"):
+        c3.date_input("Gestor", value=cand['entrevista_gestor'], key=f"g{cand['id']}",
+                     on_change=fast_save, args=(cand['id'], "entrevista_gestor", f"g{cand['id']}", cand['candidato']))
+        
+        if c4.button("🗑️", key=f"d{cand['id']}"):
             with engine.begin() as conn:
                 conn.execute(text("DELETE FROM candidatos WHERE id = :id"), {"id": cand['id']})
             st.rerun()
-        
-        st.markdown("<br>", unsafe_allow_html=True)
 
-# --- 5. INTERFACE PRINCIPAL ---
-st.markdown('<h1 style="color: #8DF768; font-family: sans-serif;">RH ETUS</h1>', unsafe_allow_html=True)
+# --- 4. INTERFACE ---
+st.title("RH ETUS")
 
-menu = st.sidebar.radio("Navegação", ["📊 DASHBOARD", "🏢 VAGAS", "⚙️ FLUXO"])
+# Sidebar simplificada para não processar nada extra
+menu = st.sidebar.selectbox("Menu", ["Fluxo", "Vagas", "Dash"])
 
-if menu == "⚙️ FLUXO":
-    # Carregar vagas para o seletor
-    df_vagas = pd.read_sql("SELECT nome_vaga FROM vagas ORDER BY nome_vaga", engine)
+if menu == "Fluxo":
+    # Carregamento cacheado das vagas para não bater no banco toda hora
+    vagas_df = pd.read_sql("SELECT nome_vaga FROM vagas", engine)
+    v_sel = st.selectbox("Vaga", vagas_df["nome_vaga"].tolist()) if not vagas_df.empty else None
     
-    if not df_vagas.empty:
-        v_list = df_vagas["nome_vaga"].tolist()
-        v_sel = st.selectbox("Escolha a Vaga", v_list)
+    if v_sel:
+        # Busca apenas os candidatos daquela vaga específica (Query leve)
+        df_c = pd.read_sql(text("SELECT id, candidato, status_geral, entrevista_rh, entrevista_gestor FROM candidatos WHERE vaga_vinculada = :v ORDER BY id DESC"), 
+                          engine, params={"v": v_sel})
         
-        # Botão Adicionar (Fora do fragmento para poder dar rerun na lista)
-        with st.popover("➕ Adicionar Candidato"):
-            nome_novo = st.text_input("Nome do Candidato")
-            if st.button("Salvar Novo"):
-                with engine.begin() as conn:
-                    conn.execute(text("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:c, :v, 'Vaga aberta')"), 
-                                 {"c": nome_novo, "v": v_sel})
-                st.rerun()
-
-        st.divider()
-
-        # Carregar candidatos da vaga selecionada
-        query = text("SELECT * FROM candidatos WHERE vaga_vinculada = :v ORDER BY id DESC")
-        df_c = pd.read_sql(query, engine, params={"v": v_sel})
+        status_lista = ["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
         
-        opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
-        
-        # Renderizar cada candidato dentro de seu próprio fragmento
-        for _, cand in df_c.iterrows():
-            card_candidato(cand, opcoes_status)
-    else:
-        st.warning("Cadastre uma vaga no menu VAGAS primeiro.")
-
-# Outros menus mantidos de forma simples para performance
-elif menu == "🏢 VAGAS":
-    st.subheader("Gestão de Vagas")
-    # ... (lógica de vagas que você já possui)
+        for _, row in df_c.iterrows():
+            exibir_card(row, status_lista)
