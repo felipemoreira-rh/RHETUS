@@ -96,6 +96,7 @@ with st.sidebar:
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
 # --- 7. INDICADORES (AGING DE VAGAS) ---
+# --- 7. INDICADORES (AGING E TEMPO POR ETAPA) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_vagas()
     df_c = pd.read_sql("SELECT * FROM candidatos", engine)
@@ -103,23 +104,68 @@ if menu == "📊 INDICADORES":
     if not df_v.empty:
         hoje = pd.Timestamp(datetime.now().date())
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
-        df_v['data_fechamento'] = pd.to_datetime(df_v['data_fechamento'])
         
+        # Cálculo de Aging Geral da Vaga
         df_v['dias_aberta'] = df_v.apply(
             lambda x: (hoje - x['data_abertura']).days if pd.isnull(x['data_fechamento']) 
-            else (x['data_fechamento'] - x['data_abertura']).days, axis=1
+            else (pd.to_datetime(x['data_fechamento']) - x['data_abertura']).days, axis=1
         )
 
+        # MÉTRICAS NO TOPO
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
-        c2.metric("⏱️ MÉDIA DE DIAS", f"{int(df_v['dias_aberta'].mean()) if not df_v.empty else 0} d")
-        c3.metric("⚠️ MAIOR AGING", f"{df_v['dias_aberta'].max()} d")
+        c2.metric("⏱️ MÉDIA DE FECHAMENTO", f"{int(df_v['dias_aberta'].mean())} d")
+        c3.metric("👥 TOTAL CANDIDATOS", len(df_c))
         c4.metric("✅ CONTRATAÇÕES", len(df_c[df_c["status_geral"] == "Finalizada"]))
 
         st.divider()
-        st.subheader("⏳ Dias em Aberto por Vaga")
+
+        # --- NOVO: CÁLCULO DE TEMPO POR ETAPA ---
+        st.subheader("⏳ Tempo de Permanência por Etapa (Dias)")
+        
+        if not df_c.empty:
+            # Converter colunas para datetime
+            for col in ['entrevista_rh', 'entrevista_gestor', 'entrevista_cultura']:
+                df_c[col] = pd.to_datetime(df_c[col])
+            
+            # Cruzar com a data de abertura da vaga para saber o início
+            df_analise = df_c.merge(df_v[['nome_vaga', 'data_abertura']], left_on='vaga_vinculada', right_on='nome_vaga')
+
+            # Calcular intervalos (Ex: dias da abertura até o RH, do RH até o Gestor...)
+            df_analise['Até Triagem/RH'] = (df_analise['entrevista_rh'] - df_analise['data_abertura']).dt.days
+            df_analise['RH -> Gestor'] = (df_analise['entrevista_gestor'] - df_analise['entrevista_rh']).dt.days
+            df_analise['Gestor -> Cultura'] = (df_analise['entrevista_cultura'] - df_analise['entrevista_gestor']).dt.days
+            
+            # Limpar valores negativos ou nulos para o gráfico
+            cols_tempo = ['Até Triagem/RH', 'RH -> Gestor', 'Gestor -> Cultura']
+            for c in cols_tempo:
+                df_analise[c] = df_analise[c].apply(lambda x: x if x > 0 else 0)
+
+            # Gráfico de Barras Empilhadas por Candidato
+            fig_etapas = px.bar(
+                df_analise, 
+                x="candidato", 
+                y=cols_tempo,
+                title="Distribuição de Dias por Candidato",
+                labels={"value": "Dias", "variable": "Etapa"},
+                barmode="stack",
+                color_discrete_sequence=["#8DF768", "#00CC96", "#636EFA"] # Tons de verde/azul
+            )
+            st.plotly_chart(fig_etapas, use_container_width=True)
+            
+            # Média Geral por Etapa
+            st.write("**Média de dias em cada fase (Geral):**")
+            m_col1, m_col2, m_col3 = st.columns(3)
+            m_col1.info(f"Triagem: {df_analise['Até Triagem/RH'].mean():.1f} dias")
+            m_col2.info(f"Com Gestor: {df_analise['RH -> Gestor'].mean():.1f} dias")
+            m_col3.info(f"Cultura/Final: {df_analise['Gestor -> Cultura'].mean():.1f} dias")
+        else:
+            st.warning("Aguardando dados de candidatos para calcular as etapas.")
+
+        st.divider()
+        st.subheader("📋 Aging de Vagas Abertas")
         fig_aging = px.bar(df_v[df_v['status_vaga'] == 'Aberta'], x='dias_aberta', y='nome_vaga', orientation='h', 
-                           color='dias_aberta', color_continuous_scale='Viridis', text='dias_aberta')
+                           color='dias_aberta', color_continuous_scale='Greens', text='dias_aberta')
         st.plotly_chart(fig_aging, use_container_width=True)
 
 # --- 8. VAGAS ---
@@ -223,3 +269,4 @@ elif menu == "🚀 ONBOARDING":
             st.success("Progresso salvo!")
     else:
         st.info("Nenhum candidato aprovado para onboarding.")
+
