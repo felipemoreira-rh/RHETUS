@@ -153,3 +153,12 @@ elif menu == "⚙️ CANDIDATOS":
                         conn.execute(text("DELETE FROM candidatos WHERE candidato=:n"), {"n": cand['candidato']})
                     conn.commit()
                 st.rerun()
+                # --- 10. ONBOARDING ---
+elif menu == "🚀 ONBOARDING":
+    df_ap = pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada'", engine)
+    if not df_ap.empty:
+        sel = st.selectbox("Colaborador:", df_ap["candidato"].tolist())
+        st.write(f"Checklist para {sel} em desenvolvimento...")
+    else:
+        st.info("Nenhum candidato finalizado para Onboarding.")
+
