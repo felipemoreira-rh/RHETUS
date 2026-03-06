@@ -42,6 +42,57 @@ def inicializar_banco():
 
 inicializar_banco()
 
+# --- 4. CSS (DESIGN E ANIMAÇÃO DA BOLA DE FUTEBOL AMERICANO) ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    
+    /* Configurações de Fonte e Sidebar (Preservando seu estilo) */
+    html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
+    [data-testid="stSidebar"] { background-color: #0E1117 !important; }
+    [data-testid="stSidebar"] [data-test="stWidgetSelectionColumn"] { display: none !important; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p { color: #777777 !important; font-size: 18px !important; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p { color: #8DF768 !important; font-weight: 700 !important; }
+
+    /* 1. ESCONDE O ÍCONE DE CARREGAMENTO PADRÃO */
+    [data-testid="stStatusWidget"] {
+        visibility: hidden;
+    }
+
+    /* 2. CRIA A BOLA DE FUTEBOL AMERICANO ANIMADA */
+    [data-testid="stStatusWidget"]::before {
+        content: '🏈'; 
+        visibility: visible;
+        position: fixed;
+        top: 25px;
+        right: 35px;
+        font-size: 32px;
+        z-index: 999999;
+        animation: footballSpiral 1.2s ease-in-out infinite;
+    }
+
+    /* 3. ANIMAÇÃO DE LANÇAMENTO EM ESPIRAL */
+    @keyframes footballSpiral {
+        0% {
+            transform: translateY(0px) rotate(0deg);
+            filter: drop-shadow(0 0 0px #8DF768);
+        }
+        50% {
+            transform: translateY(-8px) rotate(180deg) scale(1.1);
+            filter: drop-shadow(0 0 12px #8DF768); /* Brilho verde Etus */
+        }
+        100% {
+            transform: translateY(0px) rotate(360deg);
+            filter: drop-shadow(0 0 0px #8DF768);
+        }
+    }
+
+    /* Layout Geral */
+    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
+    .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- 5. FUNÇÕES DE CARGA ---
 def carregar_vagas():
     return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
@@ -290,6 +341,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
         st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
+
 
 
 
