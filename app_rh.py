@@ -39,70 +39,69 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS MODERNIZAÇÃO (Sidebar Clean) ---
+# --- 4. CSS MODERNIZAÇÃO (Apenas Texto, Sem Botões ou Círculos) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
     
-    /* Global e Fundo da Sidebar */
-    html, body, [class*="css"], [data-testid="stSidebar"] { 
-        font-family: 'Space Grotesk', sans-serif !important; 
-    }
-    
-    [data-testid="stSidebar"] {
-        background-color: #0E1117 !important; /* Cor padrão escura do Streamlit ou use #151514 */
+    /* Fontes e fundo da Sidebar */
+    [data-testid="stSidebar"], [data-testid="stSidebar"] * {
+        font-family: 'Space Grotesk', sans-serif !important;
     }
 
-    /* Remove o widget de rádio padrão (bolinhas e botões) */
+    [data-testid="stSidebar"] {
+        background-color: #0E1117 !important;
+    }
+
+    /* 1. ESCONDER O CÍRCULO (RADIO) E O FUNDO VERMELHO/AZUL */
+    [data-testid="stSidebar"] [data-testid="stWidgetSelectionColumn"] {
+        display: none !important;
+    }
+
+    /* 2. REMOVER QUALQUER BORDA OU FUNDO DO CONTAINER DO RADIO */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
         background-color: transparent !important;
-        display: flex;
-        flex-direction: column;
-        gap: 15px; /* Espaçamento entre os nomes */
-    }
-
-    /* Estilo do Texto do Menu */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-        background: none !important;
         border: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        cursor: pointer;
     }
 
-    /* Texto das opções não selecionadas */
+    /* 3. ESTILIZAR APENAS O TEXTO */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 5px 0px !important;
+        margin-bottom: 10px !important;
+        display: block !important;
+    }
+
+    /* Texto Inativo (Cinza) */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p {
-        color: #888888 !important; /* Cinza discreto */
+        color: #666666 !important;
         font-size: 18px !important;
         font-weight: 400 !important;
-        transition: all 0.3s ease;
-        margin: 0 !important;
+        transition: all 0.2s ease;
     }
 
-    /* Texto da opção selecionada */
+    /* Texto Ativo/Selecionado (Verde Etus) */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p {
-        color: #8DF768 !important; /* Verde Etus */
+        color: #8DF768 !important;
         font-weight: 700 !important;
-        font-size: 20px !important;
+        font-size: 19px !important;
     }
 
-    /* Efeito de passar o mouse apenas no texto */
+    /* Efeito de hover no texto */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover p {
         color: #FFFFFF !important;
     }
 
-    /* Esconde a bolinha do radio button de forma agressiva */
-    [data-testid="stSidebar"] [data-test="stWidgetSelectionColumn"] {
-        display: none !important;
+    /* Remove a linha vermelha/azul de foco que o Streamlit coloca */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:focus {
+        outline: none !important;
+        box-shadow: none !important;
     }
     
-    /* Remove bordas residuais */
-    div[data-testid="stRadio"] > label {
-        display: none !important;
-    }
-
-    /* Header e Cards (Mantidos para o resto do app) */
-    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; padding-left: 15px; }
+    /* Header e Cards (Mantidos) */
+    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
     .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
@@ -241,6 +240,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
