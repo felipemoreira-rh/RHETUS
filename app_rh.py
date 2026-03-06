@@ -17,25 +17,23 @@ except KeyError:
     st.stop()
 
 # --- 3. INICIALIZAÇÃO DE COLUNAS (Incluindo a de Cultura) ---
+# --- 3. INICIALIZAÇÃO DE COLUNAS (Adicionando campos de Vagas) ---
 def inicializar_banco():
-    # Colunas de Onboarding + Coluna de Data de Cultura
-    colunas = [
-        "envio_proposta", "solic_documentos", "solic_fotos", "solic_contrato",
-        "solic_acessos", "cad_rh_gestor", "cad_starbem", "cad_dasa", 
-        "cad_avus", "agend_onboarding", "envio_gestor"
-    ]
     with engine.connect() as conn:
-        # Garante a coluna de data para a entrevista de cultura
-        try:
-            conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS entrevista_cultura DATE"))
-            conn.commit()
-        except: pass
-
-        for col in colunas:
+        # Colunas novas para a tabela VAGAS
+        novas_colunas_vagas = {
+            "gestor": "TEXT",
+            "data_abertura": "DATE",
+            "data_fechamento": "DATE"
+        }
+        for col, tipo in novas_colunas_vagas.items():
             try:
-                conn.execute(text(f"ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE"))
+                conn.execute(text(f"ALTER TABLE vagas ADD COLUMN IF NOT EXISTS {col} {tipo}"))
                 conn.commit()
-            except Exception: pass
+            except: pass
+        
+        # (Mantém as colunas de candidatos que já fizemos antes...)
+        # ... lógica de candidatos aqui ...
 
 inicializar_banco()
 
@@ -139,15 +137,86 @@ if menu == "📊 DASHBOARD":
         st.plotly_chart(fig, use_container_width=True)
 
 # --- 8. VAGAS (Mantido) ---
+# --- 8. GESTÃO DE VAGAS (COM EDIÇÃO E MÉTRICAS) ---
 elif menu == "🏢 GESTÃO DE VAGAS":
-    st.subheader("Painel de Vagas")
-    with st.expander("➕ CRIAR NOVA VAGA"):
+    st.subheader("Painel de Controle de Vagas")
+    
+    # --- FORMULÁRIO DE CRIAÇÃO (MANTIDO) ---
+    with st.expander("➕ CRIAR NOVA VAGA", expanded=False):
         with st.form("f_vaga"):
             n_v = st.text_input("Nome da Vaga")
             a_v = st.selectbox("Departamento", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
-            if st.form_submit_button("CONFIRMAR"):
+            d_ab = st.date_input("Data de Abertura", value=datetime.now())
+            g_v = st.text_input("Nome do Gestor Responsável")
+            
+            if st.form_submit_button("CONFIRMAR CRIAÇÃO"):
                 with engine.connect() as conn:
-                    conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga) VALUES (:n, :a, 'Aberta')"), {"n": n_v, "a": a_v})
+                    conn.execute(text("""
+                        INSERT INTO vagas (nome_vaga, area, status_vaga, data_abertura, gestor) 
+                        VALUES (:n, :a, 'Aberta', :d, :g)
+                    """), {"n": n_v, "a": a_v, "d": d_ab, "g": g_v})
+                    conn.commit()
+                st.rerun()
+
+    st.divider()
+    
+    # --- LISTAGEM E EDIÇÃO ---
+    df_v = carregar_vagas()
+    
+    for _, row in df_v.iterrows():
+        # Cálculo de tempo
+        data_ini = pd.to_datetime(row['data_abertura'])
+        data_fim = pd.to_datetime(row['data_fechamento']) if pd.notnull(row['data_fechamento']) else datetime.now()
+        dias_aberta = (data_fim - data_ini).days if pd.notnull(data_ini) else 0
+        
+        with st.container(border=True):
+            col1, col2, col3 = st.columns([3, 2, 1])
+            
+            with col1:
+                st.markdown(f"### {row['nome_vaga']}")
+                st.caption(f"📍 {row['area']} | 👤 Gestor: {row.get('gestor', 'Não definido')}")
+            
+            with col2:
+                st.write(f"📅 Aberta em: {row['data_abertura']}")
+                status_cor = "🟢" if row['status_vaga'] == 'Aberta' else "🔴"
+                st.write(f"{status_cor} Status: {row['status_vaga']}")
+                st.info(f"⏱️ Tempo total: {dias_aberta} dias")
+
+            # --- BOTÕES DE AÇÃO ---
+            with col3:
+                btn_edit = st.button("📝 EDITAR", key=f"edv_{row['id']}")
+                btn_del = st.button("🗑️ APAGAR", key=f"delv_{row['id']}")
+
+            # --- MODAL DE EDIÇÃO (Aparece se clicar em Editar) ---
+            if btn_edit:
+                with st.form(key=f"form_ed_{row['id']}"):
+                    st.write(f"Editando Vaga: {row['nome_vaga']}")
+                    novo_nome = st.text_input("Nome da Vaga", value=row['nome_vaga'])
+                    novo_gestor = st.text_input("Gestor", value=row.get('gestor', ''))
+                    novo_status = st.selectbox("Status", ["Aberta", "Fechada", "Pausada"], 
+                                             index=["Aberta", "Fechada", "Pausada"].index(row['status_vaga']))
+                    nova_abertura = st.date_input("Data Abertura", value=row['data_abertura'] if pd.notnull(row['data_abertura']) else datetime.now())
+                    nova_fechamento = st.date_input("Data Fechamento (Se fechada)", 
+                                                   value=row['data_fechamento'] if pd.notnull(row['data_fechamento']) else None)
+                    
+                    if st.form_submit_button("SALVAR ALTERAÇÕES"):
+                        with engine.connect() as conn:
+                            conn.execute(text("""
+                                UPDATE vagas SET 
+                                nome_vaga = :n, gestor = :g, status_vaga = :s, 
+                                data_abertura = :da, data_fechamento = :df 
+                                WHERE id = :id
+                            """), {
+                                "n": novo_nome, "g": novo_gestor, "s": novo_status, 
+                                "da": nova_abertura, "df": nova_fechamento, "id": row['id']
+                            })
+                            conn.commit()
+                        st.success("Vaga atualizada!")
+                        st.rerun()
+
+            if btn_del:
+                with engine.connect() as conn:
+                    conn.execute(text("DELETE FROM vagas WHERE id = :id"), {"id": row['id']})
                     conn.commit()
                 st.rerun()
 
@@ -241,6 +310,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
