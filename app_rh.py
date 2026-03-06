@@ -16,11 +16,22 @@ except KeyError:
     st.error("Erro nos Secrets do banco de dados.")
     st.stop()
 
-# --- 3. INICIALIZAÇÃO E REPARO ---
+# --- 3. INICIALIZAÇÃO E REPARO (Blindagem contra erros de ID) ---
 def inicializar_banco():
     with engine.connect() as conn:
-        conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE)"))
-        conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT)"))
+        # Garante estrutura básica
+        conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE)"))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT)"))
+        
+        # Colunas de Onboarding
+        on_cols = {
+            "envio_proposta": "BOOLEAN DEFAULT FALSE", "solic_documentos": "BOOLEAN DEFAULT FALSE",
+            "solic_contrato": "BOOLEAN DEFAULT FALSE", "solic_acessos": "BOOLEAN DEFAULT FALSE",
+            "entrevista_rh": "DATE", "entrevista_gestor": "DATE", "entrevista_cultura": "DATE"
+        }
+        for col, tipo in on_cols.items():
+            try: conn.execute(text(f"ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS {col} {tipo}")); conn.commit()
+            except: pass
         conn.commit()
 
 def reparar_banco_id():
@@ -29,9 +40,9 @@ def reparar_banco_id():
             conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL"))
             conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL"))
             conn.commit()
-            st.success("✅ Colunas de identificação sincronizadas!")
-        except Exception as e:
-            st.info("O banco já possui chaves ou não permite alteração direta. O app usará nomes como referência.")
+            st.success("✅ Banco sincronizado!")
+        except:
+            st.info("O banco já utiliza identificadores por nome.")
 
 inicializar_banco()
 
@@ -54,15 +65,13 @@ def carregar_candidatos(): return pd.read_sql("SELECT * FROM candidatos", engine
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
-    menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS"])
+    menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
 # --- 7. INDICADORES ---
 if menu == "📊 INDICADORES":
-    df_v = carregar_vagas()
-    df_c = carregar_candidatos()
-    
+    df_v = carregar_vagas(); df_c = carregar_candidatos()
     if not df_v.empty:
         hoje = pd.Timestamp(datetime.now().date())
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
@@ -72,7 +81,7 @@ if menu == "📊 INDICADORES":
         c1, c2, c3 = st.columns(3)
         c1.metric("📌 VAGAS ABERTAS", len(v_ativas))
         c2.metric("⏱️ AGING MÉDIO", f"{int(v_ativas['aging'].mean()) if not v_ativas.empty else 0} dias")
-        c3.metric("👥 CANDIDATOS ATIVOS", len(df_c))
+        c3.metric("👥 CANDIDATOS ATIVOS", len(df_c[df_c['status_geral'] != 'Finalizada']))
 
         st.subheader("🕒 Tempo de Abertura por Vaga (Aging)")
         st.plotly_chart(px.bar(v_ativas, x='aging', y='nome_vaga', orientation='h', color_discrete_sequence=['#8DF768']), use_container_width=True)
@@ -80,20 +89,18 @@ if menu == "📊 INDICADORES":
         st.subheader("📊 Distribuição por Etapa (%)")
         df_status = df_c.groupby(['vaga_vinculada', 'status_geral']).size().reset_index(name='qtd')
         fig = px.bar(df_status, y="vaga_vinculada", x="qtd", color="status_geral", orientation='h', barmode="relative")
-        fig.update_layout(barnorm='percent')
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(barnorm='percent'); st.plotly_chart(fig, use_container_width=True)
 
-# --- 8. VAGAS (COM BLINDAGEM DE ID) ---
+# --- 8. VAGAS ---
 elif menu == "🏢 VAGAS":
-    if st.button("🛠️ REPARAR BANCO"): reparar_banco_id()
-    
+    if st.button("🛠️ REPARAR IDs"): reparar_banco_id()
     with st.expander("➕ CADASTRAR NOVA VAGA"):
         with st.form("n_vaga"):
-            nv = st.text_input("Nome da Vaga"); av = st.selectbox("Área", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
-            gv = st.text_input("Gestor"); dv = st.date_input("Abertura", value=datetime.now())
+            nv = st.text_input("Nome da Vaga"); gv = st.text_input("Gestor")
+            av = st.selectbox("Área", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
             if st.form_submit_button("CRIAR"):
                 with engine.connect() as conn:
-                    conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)"), {"n": nv, "a": av, "g": gv, "d": dv}); conn.commit()
+                    conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)"), {"n": nv, "a": av, "g": gv, "d": datetime.now().date()}); conn.commit()
                 st.rerun()
 
     df_v = carregar_vagas()
@@ -102,63 +109,76 @@ elif menu == "🏢 VAGAS":
         with st.expander(f"🏢 {row['nome_vaga'].upper()} | {row['status_vaga']}"):
             with st.form(f"ed_v_{vid}"):
                 eg = st.text_input("Gestor", value=row['gestor'])
-                es = st.selectbox("Status", ["Aberta", "Pausada", "Cancelada", "Finalizada"], index=0)
+                es = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=0)
                 if st.form_submit_button("💾 SALVAR"):
                     with engine.connect() as conn:
-                        if 'id' in row and pd.notnull(row['id']):
-                            conn.execute(text("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE id=:id"), {"g": eg, "s": es, "id": row['id']})
-                        else:
-                            conn.execute(text("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE nome_vaga=:n"), {"g": eg, "s": es, "n": row['nome_vaga']})
+                        if 'id' in row and pd.notnull(row['id']): conn.execute(text("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE id=:id"), {"g": eg, "s": es, "id": row['id']})
+                        else: conn.execute(text("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE nome_vaga=:n"), {"g": eg, "s": es, "n": row['nome_vaga']})
                         conn.commit()
                     st.rerun()
             if st.button("🗑️ EXCLUIR VAGA", key=f"del_v_{vid}"):
                 with engine.connect() as conn:
-                    if 'id' in row and pd.notnull(row['id']):
-                        conn.execute(text("DELETE FROM vagas WHERE id=:id"), {"id": row['id']})
-                    else:
-                        conn.execute(text("DELETE FROM vagas WHERE nome_vaga=:n"), {"n": row['nome_vaga']})
+                    if 'id' in row and pd.notnull(row['id']): conn.execute(text("DELETE FROM vagas WHERE id=:id"), {"id": row['id']})
+                    else: conn.execute(text("DELETE FROM vagas WHERE nome_vaga=:n"), {"n": row['nome_vaga']})
                     conn.commit()
                 st.rerun()
 
-# --- 9. CANDIDATOS (COM BLINDAGEM DE ID) ---
+# --- 9. CANDIDATOS ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
-    with st.form("add_c"):
-        cn = st.text_input("Nome"); cv = st.selectbox("Vaga", df_vagas["nome_vaga"].tolist() if not df_vagas.empty else ["Nenhuma"])
-        if st.form_submit_button("➕ ADICIONAR"):
-            with engine.connect() as conn:
-                h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: Cadastro"
-                conn.execute(text("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral, historico) VALUES (:n, :v, 'Triagem', :h)"), {"n": cn, "v": cv, "h": h}); conn.commit()
-            st.rerun()
-
+    with st.expander("➕ ADICIONAR CANDIDATO"):
+        with st.form("add_c"):
+            cn = st.text_input("Nome"); cv = st.selectbox("Vaga", df_vagas["nome_vaga"].tolist() if not df_vagas.empty else ["Nenhuma"])
+            if st.form_submit_button("CADASTRAR"):
+                with engine.connect() as conn:
+                    h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: Cadastro"
+                    conn.execute(text("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral, historico) VALUES (:n, :v, 'Triagem', :h)"), {"n": cn, "v": cv, "h": h}); conn.commit()
+                st.rerun()
+    
     df_c = carregar_candidatos()
     for i, cand in df_c.iterrows():
         cid = cand['id'] if 'id' in cand and pd.notnull(cand['id']) else f"cidx_{i}"
         with st.expander(f"👤 {cand['candidato'].upper()} | {cand['status_geral']}"):
-            ns = st.selectbox("Status", ["Triagem", "Entrevista", "Finalizada"], key=f"s_{cid}")
+            ns = st.selectbox("Status", ["Triagem", "Entrevista RH", "Entrevista gestor", "Entrevista Cultura", "Finalizada"], key=f"s_{cid}")
             if st.button("💾 ATUALIZAR", key=f"b_{cid}"):
                 with engine.connect() as conn:
                     h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {ns}\n" + (cand['historico'] or "")
-                    if 'id' in cand and pd.notnull(cand['id']):
-                        conn.execute(text("UPDATE candidatos SET status_geral=:s, historico=:h WHERE id=:id"), {"s": ns, "h": h, "id": cand['id']})
-                    else:
-                        conn.execute(text("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n"), {"s": ns, "h": h, "n": cand['candidato']})
+                    if 'id' in cand and pd.notnull(cand['id']): conn.execute(text("UPDATE candidatos SET status_geral=:s, historico=:h WHERE id=:id"), {"s": ns, "h": h, "id": cand['id']})
+                    else: conn.execute(text("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n"), {"s": ns, "h": h, "n": cand['candidato']})
                     conn.commit()
                 st.rerun()
             if st.button("🗑️ EXCLUIR", key=f"d_{cid}"):
                 with engine.connect() as conn:
-                    if 'id' in cand and pd.notnull(cand['id']):
-                        conn.execute(text("DELETE FROM candidatos WHERE id=:id"), {"id": cand['id']})
-                    else:
-                        conn.execute(text("DELETE FROM candidatos WHERE candidato=:n"), {"n": cand['candidato']})
+                    if 'id' in cand and pd.notnull(cand['id']): conn.execute(text("DELETE FROM candidatos WHERE id=:id"), {"id": cand['id']})
+                    else: conn.execute(text("DELETE FROM candidatos WHERE candidato=:n"), {"n": cand['candidato']})
                     conn.commit()
                 st.rerun()
-                # --- 10. ONBOARDING ---
+
+# --- 10. ONBOARDING (RESTAURADO) ---
 elif menu == "🚀 ONBOARDING":
     df_ap = pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada'", engine)
     if not df_ap.empty:
-        sel = st.selectbox("Colaborador:", df_ap["candidato"].tolist())
-        st.write(f"Checklist para {sel} em desenvolvimento...")
+        sel = st.selectbox("Selecione o Novo Colaborador:", df_ap["candidato"].tolist())
+        c_data = df_ap[df_ap["candidato"] == sel].iloc[0]
+        
+        st.markdown(f"### 📋 Checklist de Onboarding: {sel}")
+        checks = {"Envio Proposta": "envio_proposta", "Documentos": "solic_documentos", "Contrato": "solic_contrato", "Acessos": "solic_acessos"}
+        
+        novos_on = {}
+        c_on1, c_on2 = st.columns(2)
+        for i, (label, db_col) in enumerate(checks.items()):
+            col_target = c_on1 if i < 2 else c_on2
+            novos_on[db_col] = col_target.checkbox(label, value=bool(c_data.get(db_col, False)), key=f"on_{c_data.get('id', i)}_{db_col}")
+        
+        if st.button("💾 SALVAR ONBOARDING", use_container_width=True):
+            with engine.connect() as conn:
+                sets = ", ".join([f"{k}=:{k}" for k in novos_on.keys()])
+                # Identifica por ID ou Nome para segurança
+                if 'id' in c_data and pd.notnull(c_data['id']):
+                    conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos_on, "id": c_data["id"]})
+                else:
+                    conn.execute(text(f"UPDATE candidatos SET {sets} WHERE candidato=:n"), {**novos_on, "n": sel})
+                conn.commit()
+            st.success("Progresso salvo!"); st.rerun()
     else:
-        st.info("Nenhum candidato finalizado para Onboarding.")
-
+        st.info("💡 Mova candidatos para o status 'Finalizada' para iniciar o Onboarding.")
