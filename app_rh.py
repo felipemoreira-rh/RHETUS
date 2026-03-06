@@ -220,24 +220,76 @@ elif menu == "⚙️ CANDIDATOS":
                     st.rerun()
 
 # --- 10. ONBOARDING ---
+# --- 10. ONBOARDING (NOME CORRIGIDO) ---
 elif menu == "🚀 ONBOARDING":
+    st.subheader("Onboarding de Aprovados")
+    
+    # Carregamos os candidatos que já foram aprovados ou finalizados
     df_aprovados = carregar_aprovados()
+    
     if not df_aprovados.empty:
-        selecionado = st.selectbox("Candidato:", df_aprovados["candidato"].tolist())
+        # Seletor do Candidato
+        selecionado = st.selectbox("Selecione o Novo Colaborador:", df_aprovados["candidato"].tolist())
+        
+        # Filtramos os dados apenas desse candidato
         cand_data = df_aprovados[df_aprovados["candidato"] == selecionado].iloc[0]
-        etapas = {"Envio Proposta": "envio_proposta", "Documentos": "solic_documentos", "Fotos": "solic_fotos", "Contrato": "solic_contrato", "Acessos": "solic_acessos", "RH Gestor": "cad_rh_gestor", "STARBEM": "cad_starbem", "Dasa": "cad_dasa", "AVUS": "cad_avus", "Onboarding": "agend_onboarding", "Início Gestor": "envio_gestor"}
-        novos = {}
+        
+        st.markdown(f"### Checklist de Entrada: **{selecionado}**")
+        st.caption(f"Vaga: {cand_data['vaga_vinculada']}")
+        
+        # Mapeamento de Labels Amigáveis para as Colunas do Banco
+        etapas = {
+            "Envio de Proposta": "envio_proposta",
+            "Coleta de Documentos": "solic_documentos",
+            "Fotos para Crachá/Perfil": "solic_fotos",
+            "Assinatura de Contrato": "solic_contrato",
+            "Criação de Acessos": "solic_acessos",
+            "Cadastro RH/Gestor": "cad_rh_gestor",
+            "Benefício: STARBEM": "cad_starbem",
+            "Benefício: Dasa": "cad_dasa",
+            "Benefício: AVUS": "cad_avus",
+            "Agendamento de Onboarding": "agend_onboarding",
+            "Envio ao Gestor": "envio_gestor"
+        }
+        
+        novos_status = {}
+        
+        # Organizamos o Checklist em duas colunas para ocupar melhor a tela
         col_on1, col_on2 = st.columns(2)
+        
         for i, (label, col_db) in enumerate(etapas.items()):
-            target = col_on1 if i < 6 else col_on2
-            novos[col_db] = target.checkbox(label, value=bool(cand_data.get(col_db, False)), key=f"on_{cand_data['id']}_{col_db}")
-        if st.button("💾 Salvar Onboarding"):
+            # Alterna entre coluna 1 e 2
+            target_col = col_on1 if i < 6 else col_on2
+            
+            # Pegamos o valor atual no banco (converte para bool para o checkbox)
+            valor_atual = bool(cand_data.get(col_db, False))
+            
+            # Criamos o checkbox
+            novos_status[col_db] = target_col.checkbox(
+                label, 
+                value=valor_atual, 
+                key=f"chk_on_{cand_data['id']}_{col_db}"
+            )
+            
+        st.divider()
+        
+        # Botão para Salvar as alterações no Onboarding
+        if st.button("💾 SALVAR PROGRESSO DO ONBOARDING", use_container_width=True):
             with engine.connect() as conn:
-                sets = ", ".join([f"{k}=:{k}" for k in novos.keys()])
-                conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
+                # Montamos o comando UPDATE dinamicamente
+                clausula_set = ", ".join([f"{k} = :{k}" for k in novos_status.keys()])
+                query_update = text(f"UPDATE candidatos SET {clausula_set} WHERE id = :id")
+                
+                # Executamos passando o dicionário de novos status + o ID do candidato
+                conn.execute(query_update, {**novos_status, "id": int(cand_data["id"])})
                 conn.commit()
-            st.success("Salvo!")
-
+                
+            st.success(f"Progresso de {selecionado} atualizado com sucesso!")
+            st.balloons() # Efeito visual de comemoração
+            st.rerun()
+    else:
+        st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
+        st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
 
 
 
