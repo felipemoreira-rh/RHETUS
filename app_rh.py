@@ -42,17 +42,41 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS (DESIGN MINIMALISTA APENAS TEXTO) ---
+# --- 4. CSS (DESIGN E ANIMAÇÃO DA BOLA DE FUTEBOL) ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
-    html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
-    [data-testid="stSidebar"] { background-color: #0E1117 !important; }
-    [data-testid="stSidebar"] [data-test="stWidgetSelectionColumn"] { display: none !important; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] { background-color: transparent !important; border: none !important; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { background-color: transparent !important; border: none !important; box-shadow: none !important; padding: 8px 0px !important; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p { color: #777777 !important; font-size: 18px !important; transition: color 0.3s; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p { color: #8DF768 !important; font-weight: 700 !important; font-size: 20px !important; }
+    /* ... (Mantenha seu CSS anterior aqui) ... */
+
+    /* 1. ESCONDE O ÍCONE DE CARREGAMENTO PADRÃO DO STREAMLIT */
+    [data-testid="stStatusWidget"] {
+        visibility: hidden;
+    }
+
+    /* 2. CRIA A BOLA DE FUTEBOL ANIMADA */
+    [data-testid="stStatusWidget"]::before {
+        content: '⚽'; /* Ícone da bola */
+        visibility: visible;
+        position: fixed;
+        top: 20px;
+        left: -50px; /* Começa fora da tela à esquerda */
+        font-size: 30px;
+        animation: kickBall 2s linear infinite;
+        z-index: 999999;
+    }
+
+    /* 3. DEFINE O MOVIMENTO DA ESQUERDA PARA A DIREITA */
+    @keyframes kickBall {
+        0% {
+            left: 0%;
+            transform: rotate(0deg);
+        }
+        100% {
+            left: 100%;
+            transform: rotate(360deg);
+        }
+    }
+
+    /* Estilo do Header e Cards mantidos */
     .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
     .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
     </style>
@@ -253,4 +277,5 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
