@@ -72,72 +72,131 @@ elif menu == "🏢 VAGAS":
             st.rerun()
     st.dataframe(carregar_vagas(), use_container_width=True)
 
-# --- 9. CANDIDATOS (ADICIONAR E EXCLUIR) ---
+# --- 9. CANDIDATOS ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
-    
-    # 🟢 PARTE 1: FORMULÁRIO DE INCLUSÃO (SEMPRE NO TOPO)
-    st.markdown("### ➕ Adicionar Novo Candidato")
-    if not df_vagas.empty:
-        with st.container(border=True):
+
+    tab1, tab2 = st.tabs(["➕ Novo Candidato", "📋 Gestão de Candidatos"])
+
+    # ----------------------------
+    # ABA 1 - NOVO CANDIDATO
+    # ----------------------------
+    with tab1:
+        st.markdown("### ➕ Adicionar Novo Candidato")
+
+        if not df_vagas.empty:
             with st.form("form_add", clear_on_submit=True):
+
                 c1, c2 = st.columns(2)
+
                 nome_novo = c1.text_input("Nome do Candidato")
                 vaga_vinculo = c2.selectbox("Vaga", df_vagas["nome_vaga"].tolist())
-                
+
                 if st.form_submit_button("✅ CADASTRAR NO BANCO"):
+
                     if nome_novo:
+
                         with engine.connect() as conn:
                             log_inicial = f"➔ {datetime.now().strftime('%d/%m/%Y %H:%M')}: Cadastro realizado (Triagem)\n"
-                            conn.execute(text("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral, historico) VALUES (:n, :v, 'Triagem', :h)"),
-                                         {"n": nome_novo, "v": vaga_vinculo, "h": log_inicial})
+
+                            conn.execute(text("""
+                                INSERT INTO candidatos 
+                                (candidato, vaga_vinculada, status_geral, historico)
+                                VALUES (:n, :v, 'Triagem', :h)
+                            """),
+                            {"n": nome_novo, "v": vaga_vinculo, "h": log_inicial})
+
                             conn.commit()
+
                         st.success(f"Candidato {nome_novo} cadastrado!")
                         st.rerun()
-                    else: st.error("Insira o nome.")
-    else:
-        st.warning("⚠️ Crie uma vaga primeiro na aba 'Vagas'.")
 
-    st.divider()
+                    else:
+                        st.error("Insira o nome do candidato.")
 
-    # 🔍 PARTE 2: GESTÃO E EXCLUSÃO
-    st.markdown("### 🔍 Gestão de Candidatos")
-    df_c = pd.read_sql("SELECT * FROM candidatos ORDER BY id DESC", engine)
-    
-    if df_c.empty:
-        st.info("Nenhum candidato cadastrado ainda.")
-    else:
-        status_list = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista gestor", "Entrevista Cultura", "Finalizada"]
-        
-        for _, cand in df_c.iterrows():
-            with st.expander(f"👤 {cand['candidato'].upper()} | {cand['vaga_vinculada']} | Status: {cand['status_geral']}"):
-                col_edit, col_del = st.columns([4, 1])
-                
-                with col_edit:
-                    n_status = st.selectbox("Mudar Fase", status_list, index=status_list.index(cand['status_geral']) if cand['status_geral'] in status_list else 0, key=f"st_{cand['id']}")
-                    if st.button("💾 Salvar Alterações", key=f"sv_{cand['id']}", use_container_width=True):
-                        hist_antigo = cand['historico'] if cand['historico'] else ""
-                        if n_status != cand['status_geral']:
-                            hist_antigo = f"➔ {datetime.now().strftime('%d/%m/%Y %H:%M')}: Avançou para {n_status}\n" + hist_antigo
-                        
-                        with engine.connect() as conn:
-                            conn.execute(text("UPDATE candidatos SET status_geral=:s, historico=:h WHERE id=:id"),
-                                         {"s": n_status, "h": hist_antigo, "id": cand['id']}); conn.commit()
-                        st.rerun()
+        else:
+            st.warning("⚠️ Crie uma vaga primeiro na aba 'Vagas'.")
 
-                with col_del:
-                    st.write("**Zona de Perigo**")
-                    if st.button("🗑️ EXCLUIR", key=f"del_{cand['id']}", type="secondary", use_container_width=True):
-                        with engine.connect() as conn:
-                            conn.execute(text("DELETE FROM candidatos WHERE id = :id"), {"id": cand['id']})
-                            conn.commit()
-                        st.warning("Candidato removido."); st.rerun()
-                
-                if cand['historico']:
-                    st.caption("Linha do tempo automática:")
-                    st.text(cand['historico'])
+    # ----------------------------
+    # ABA 2 - GESTÃO DE CANDIDATOS
+    # ----------------------------
+    with tab2:
+
+        st.markdown("### 🔍 Gestão de Candidatos")
+
+        df_c = pd.read_sql("SELECT * FROM candidatos ORDER BY id DESC", engine)
+
+        if df_c.empty:
+            st.info("Nenhum candidato cadastrado ainda.")
+
+        else:
+
+            status_list = [
+                "Triagem",
+                "Entrevista RH",
+                "Teste Técnico",
+                "Entrevista gestor",
+                "Entrevista Cultura",
+                "Finalizada"
+            ]
+
+            for _, cand in df_c.iterrows():
+
+                with st.expander(f"👤 {cand['candidato'].upper()} | {cand['vaga_vinculada']} | Status: {cand['status_geral']}"):
+
+                    col_edit, col_del = st.columns([4,1])
+
+                    with col_edit:
+
+                        n_status = st.selectbox(
+                            "Mudar Fase",
+                            status_list,
+                            index=status_list.index(cand['status_geral']) if cand['status_geral'] in status_list else 0,
+                            key=f"st_{cand['id']}"
+                        )
+
+                        if st.button("💾 Salvar Alterações", key=f"sv_{cand['id']}", use_container_width=True):
+
+                            hist_antigo = cand['historico'] if cand['historico'] else ""
+
+                            if n_status != cand['status_geral']:
+                                hist_antigo = f"➔ {datetime.now().strftime('%d/%m/%Y %H:%M')}: Avançou para {n_status}\n" + hist_antigo
+
+                            with engine.connect() as conn:
+
+                                conn.execute(text("""
+                                    UPDATE candidatos 
+                                    SET status_geral=:s, historico=:h 
+                                    WHERE id=:id
+                                """),
+                                {"s": n_status, "h": hist_antigo, "id": cand['id']})
+
+                                conn.commit()
+
+                            st.rerun()
+
+                    with col_del:
+
+                        st.write("**Zona de Perigo**")
+
+                        if st.button("🗑️ EXCLUIR", key=f"del_{cand['id']}", type="secondary", use_container_width=True):
+
+                            with engine.connect() as conn:
+
+                                conn.execute(text("DELETE FROM candidatos WHERE id = :id"),
+                                {"id": cand['id']})
+
+                                conn.commit()
+
+                            st.warning("Candidato removido.")
+                            st.rerun()
+
+                    if cand['historico']:
+                        st.caption("Linha do tempo automática:")
+                        st.text(cand['historico'])
 
 # --- 10. ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     st.subheader("Onboarding")
     st.write("Candidatos marcados como 'Finalizada' aparecerão aqui.")
+
