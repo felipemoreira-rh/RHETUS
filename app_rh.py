@@ -42,8 +42,6 @@ def inicializar_banco():
 
 inicializar_banco()
 
-V
-
 # --- 5. FUNÇÕES DE CARGA ---
 def carregar_vagas():
     return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
@@ -239,6 +237,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
