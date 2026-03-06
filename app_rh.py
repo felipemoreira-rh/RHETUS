@@ -2,157 +2,172 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from sqlalchemy import create_engine, text
-from datetime import datetime
+import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="RH ETUS - Cloud Database", layout="wide", page_icon="🟢")
+st.set_page_config(page_title="RH ETUS - Sistema de Recrutamento", layout="wide", page_icon="🟢")
 
-# --- 2. CONEXÃO COM POSTGRESQL ---
-# No Streamlit Cloud, você cadastrará a URL em: Settings -> Secrets
-# Formato da URL: postgresql://usuario:senha@host:porta/nome_do_banco
-DB_URL = st.secrets["postgres"]["url"]
-engine = create_engine(DB_URL)
+# --- 2. CONEXÃO COM O BANCO ---
+try:
+    DB_URL = st.secrets["postgres"]["url"]
+    engine = create_engine(DB_URL, connect_args={"sslmode": "require"})
+except KeyError:
+    st.error("Configure a URL do banco de dados nos Secrets do Streamlit.")
+    st.stop()
 
-def inicializar_banco():
-    with engine.connect() as conn:
-        # Criar Tabela de Vagas
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS vagas (
-                nome_vaga TEXT PRIMARY KEY,
-                area TEXT,
-                status_vaga TEXT
-            )
-        """))
-        # Criar Tabela de Candidatos
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS candidatos (
-                id SERIAL PRIMARY KEY,
-                candidato TEXT,
-                vaga_vinculada TEXT,
-                status_geral TEXT,
-                entrevista_rh DATE,
-                entrevista_gestor DATE,
-                teste_tecnico TEXT,
-                solicitar_doc BOOLEAN DEFAULT FALSE,
-                foto_curiosidade BOOLEAN DEFAULT FALSE,
-                contrato BOOLEAN DEFAULT FALSE,
-                equipamentos BOOLEAN DEFAULT FALSE,
-                cadastro_rh_gestor BOOLEAN DEFAULT FALSE,
-                data_inicio DATE,
-                aprovacao_final TEXT
-            )
-        """))
-        conn.commit()
-
-def carregar_vagas():
-    return pd.read_sql("SELECT * FROM vagas", engine)
-
-def carregar_candidatos():
-    df = pd.read_sql("SELECT * FROM candidatos", engine)
-    # Converter datas de volta para objeto date do python
-    for col in ["entrevista_rh", "entrevista_gestor", "data_inicio"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col]).dt.date
-    return df
-
-# Inicializar Tabelas
-inicializar_banco()
-
-# --- 3. CSS IDENTIDADE ETUS ---
+# --- 3. CSS IDENTIDADE ETUS (MELHORADO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&display=swap');
     html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif !important; }
-    [data-testid="stSidebar"] { background-color: #3A3A3A !important; }
-    .header-rh { font-size: 48px; font-weight: 700; color: #8DF768; border-left: 15px solid #151514; padding-left: 20px; text-transform: uppercase; }
+    
+    /* Título estilizado */
+    .header-rh { font-size: 48px; font-weight: 700; color: #8DF768; border-left: 15px solid #151514; padding-left: 20px; margin-bottom: 20px; }
+    
+    /* Estilização de botões */
+    .stButton>button { border-radius: 8px !important; }
+    .stButton>button[kind="secondary"] { color: #ff4b4b !important; border-color: #ff4b4b !important; }
+    
+    /* Cards de Vagas */
+    .vaga-card { background-color: #262730; padding: 20px; border-radius: 10px; border-left: 5px solid #8DF768; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. SIDEBAR E NAVEGAÇÃO ---
+# --- 4. FUNÇÕES DE BANCO ---
+def carregar_vagas():
+    return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
+
+def carregar_candidatos_vaga(v_nome):
+    query = text("SELECT * FROM candidatos WHERE vaga_vinculada = :v ORDER BY id")
+    return pd.read_sql(query, engine, params={"v": v_nome})
+
+# --- 5. SIDEBAR (LOGO E MENU) ---
 with st.sidebar:
-    menu = st.radio("", ["📊 DASHBOARD", "🏢 VAGAS", "⚙️ FLUXO"], label_visibility="collapsed")
+    # Tenta carregar a logo
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+    else:
+        st.markdown("### [LOGO ETUS]")
+    
+    st.divider()
+    menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD", "🏢 GESTÃO DE VAGAS", "⚙️ FLUXO DE CANDIDATOS"])
+    st.divider()
+    st.info("Sistema conectado ao Neon Cloud (AWS)")
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 5. LÓGICA DE INTERFACE ---
-
+# --- 6. MENU: DASHBOARD ---
 if menu == "📊 DASHBOARD":
-    df_c = carregar_candidatos()
-    df_v = carregar_vagas()
-    
+    df_c = pd.read_sql("SELECT * FROM candidatos", engine)
     if not df_c.empty:
-        st.markdown("<style>[data-testid='stMetricValue'] { color: #8DF768 !important; }</style>", unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
-        c1.metric("📌 NO FUNIL", len(df_c))
+        c1.metric("📌 TOTAL NO FUNIL", len(df_c))
         c2.metric("✅ CONTRATADOS", len(df_c[df_c["aprovacao_final"] == "Sim"]))
-        c3.metric("🏢 VAGAS ATIVAS", len(df_v[df_v["status_vaga"] == "Aberta"]))
+        c3.metric("📂 VAGAS TOTAIS", len(pd.read_sql("SELECT * FROM vagas", engine)))
         
         st.divider()
-        fig = px.bar(df_c["status_geral"].value_counts().reset_index(), x="status_geral", y="count", color_discrete_sequence=['#8DF768'])
+        st.subheader("Distribuição por Etapa")
+        fig = px.bar(df_c["status_geral"].value_counts().reset_index(), x="status_geral", y="count", 
+                     color_discrete_sequence=['#8DF768'], template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Nenhum dado no banco de dados ainda.")
+        st.info("O Dashboard aparecerá assim que houver dados cadastrados.")
 
-elif menu == "🏢 VAGAS":
-    st.subheader("Gerenciar Vagas")
-    with st.form("add_vaga"):
-        nome = st.text_input("Nome da Vaga")
-        if st.form_submit_button("CADASTRAR"):
-            if nome:
-                with engine.connect() as conn:
-                    conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga) VALUES (:n, :a, :s) ON CONFLICT DO NOTHING"), 
-                                 {"n": nome, "a": "Geral", "s": "Aberta"})
-                    conn.commit()
-                st.rerun()
-
-    df_vagas = carregar_vagas()
-    v_ed = st.data_editor(df_vagas, num_rows="dynamic", use_container_width=True, key="v_edit")
+# --- 7. MENU: GESTÃO DE VAGAS ---
+elif menu == "🏢 GESTÃO DE VAGAS":
+    st.subheader("Criação e Controle de Vagas")
     
-    if st.button("SALVAR ALTERAÇÕES/EXCLUSÕES VAGAS"):
-        with engine.connect() as conn:
-            conn.execute(text("DELETE FROM vagas")) # Limpa para resalvar o estado do editor
-            v_ed.to_sql("vagas", engine, if_exists="append", index=False)
-            conn.commit()
-        st.success("Banco de dados atualizado!")
-
-elif menu == "⚙️ FLUXO":
-    df_vagas = carregar_vagas()
-    if df_vagas.empty:
-        st.warning("Cadastre uma vaga primeiro.")
-    else:
-        v_list = df_vagas["nome_vaga"].unique().tolist()
-        tabs = st.tabs(v_list)
-        df_all = carregar_candidatos()
-
-        for i, v_nome in enumerate(v_list):
-            with tabs[i]:
-                df_v = df_all[df_all["vaga_vinculada"] == v_nome].copy()
-                
-                if st.button(f"➕ NOVO CANDIDATO", key=f"n_{v_nome}"):
+    # Cadastro de Nova Vaga (Sem parecer planilha)
+    with st.expander("➕ CADASTRAR NOVA VAGA", expanded=True):
+        with st.form("form_vaga"):
+            c1, c2 = st.columns([2, 1])
+            nome_nv = c1.text_input("Título da Vaga", placeholder="Ex: Gestor de Tráfego")
+            area_nv = c2.selectbox("Área", ["Comercial", "TI", "RH", "Operacional", "Marketing", "Outros"])
+            if st.form_submit_button("CRIAR VAGA"):
+                if nome_nv:
                     with engine.connect() as conn:
-                        conn.execute(text("""
-                            INSERT INTO candidatos (candidato, vaga_vinculada, status_geral, aprovacao_final) 
-                            VALUES ('Nome', :v, 'Vaga aberta', 'Não')
-                        """), {"v": v_nome})
+                        conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga) VALUES (:n, :a, 'Aberta') ON CONFLICT DO NOTHING"), 
+                                     {"n": nome_nv, "a": area_nv})
                         conn.commit()
+                    st.success(f"Vaga '{nome_nv}' criada!")
                     st.rerun()
 
+    st.divider()
+    
+    # Listagem de Vagas com opção de Exclusão
+    df_v = carregar_vagas()
+    if not df_v.empty:
+        for idx, row in df_v.iterrows():
+            with st.container():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                col1.markdown(f"**{row['nome_vaga']}** | {row['area']}")
+                
+                # Botão de Excluir Vaga
+                if col3.button("🗑️ EXCLUIR VAGA", key=f"del_v_{idx}"):
+                    with engine.connect() as conn:
+                        # Deleta candidatos vinculados primeiro por causa da integridade
+                        conn.execute(text("DELETE FROM candidatos WHERE vaga_vinculada = :v"), {"v": row['nome_vaga']})
+                        conn.execute(text("DELETE FROM vagas WHERE nome_vaga = :v"), {"v": row['nome_vaga']})
+                        conn.commit()
+                    st.warning(f"Vaga '{row['nome_vaga']}' removida!")
+                    st.rerun()
+                st.markdown("---")
+
+# --- 8. MENU: FLUXO DE CANDIDATOS ---
+elif menu == "⚙️ FLUXO DE CANDIDATOS":
+    df_vagas = carregar_vagas()
+    if df_vagas.empty:
+        st.warning("Cadastre uma vaga no menu '🏢 GESTÃO DE VAGAS' primeiro.")
+    else:
+        v_list = df_vagas["nome_vaga"].tolist()
+        v_sel = st.selectbox("Selecione a Vaga para gerenciar:", v_list)
+        
+        st.divider()
+        
+        # Ações do Candidato
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.markdown("### Adicionar")
+            with st.form("add_cand", clear_on_submit=True):
+                nome_c = st.text_input("Nome do Candidato")
+                if st.form_submit_button("ADICIONAR AO FLUXO"):
+                    if nome_c:
+                        with engine.connect() as conn:
+                            conn.execute(text("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:c, :v, 'Vaga aberta')"), 
+                                         {"c": nome_c, "v": v_sel})
+                            conn.commit()
+                        st.rerun()
+
+        with c2:
+            st.markdown("### Acompanhamento")
+            df_c = carregar_candidatos_vaga(v_sel)
+            
+            if not df_c.empty:
+                # Tabela editável para controle fino
                 df_ed = st.data_editor(
-                    df_v, key=f"ed_{v_nome}", use_container_width=True,
+                    df_c, key=f"ed_{v_sel}", use_container_width=True, hide_index=True,
                     column_config={
-                        "status_geral": st.column_config.SelectboxColumn("Status", options=["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]),
-                        "entrevista_rh": st.column_config.DateColumn("📅 RH"),
-                        "entrevista_gestor": st.column_config.DateColumn("📅 Gestor"),
-                        "data_inicio": st.column_config.DateColumn("🚀 Início"),
-                        "aprovacao_final": st.column_config.SelectboxColumn("Aprovado?", options=["Sim", "Não"])
+                        "id": None, "vaga_vinculada": None, # Oculta colunas desnecessárias
+                        "status_geral": st.column_config.SelectboxColumn("Etapa", options=["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]),
+                        "aprovacao_final": st.column_config.SelectboxColumn("Aprovado?", options=["Sim", "Não"]),
+                        "candidato": "Nome"
                     }
                 )
                 
-                if st.button("💾 SALVAR FLUXO", key=f"sv_{v_nome}"):
+                col_save, col_del = st.columns([1, 1])
+                if col_save.button("💾 SALVAR ALTERAÇÕES", use_container_width=True):
                     with engine.connect() as conn:
-                        # Deleta os registros antigos dessa vaga e insere os novos editados
-                        conn.execute(text("DELETE FROM candidatos WHERE vaga_vinculada = :v"), {"v": v_nome})
+                        conn.execute(text("DELETE FROM candidatos WHERE vaga_vinculada = :v"), {"v": v_sel})
                         df_ed.to_sql("candidatos", engine, if_exists="append", index=False)
                         conn.commit()
-                    st.success("Salvo no Postgres!")
+                    st.success("Alterações salvas no banco!")
+
+                # Opção de excluir candidato específico
+                cand_para_apagar = col_del.selectbox("Apagar Candidato:", ["--"] + df_c["candidato"].tolist(), label_visibility="collapsed")
+                if col_del.button("🗑️ REMOVER SELECIONADO", type="secondary", use_container_width=True) and cand_para_apagar != "--":
+                    with engine.connect() as conn:
+                        conn.execute(text("DELETE FROM candidatos WHERE candidato = :c AND vaga_vinculada = :v"), {"c": cand_para_apagar, "v": v_sel})
+                        conn.commit()
                     st.rerun()
+            else:
+                st.info("Nenhum candidato para esta vaga.")
