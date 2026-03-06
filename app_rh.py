@@ -40,69 +40,37 @@ def inicializar_banco():
 inicializar_banco()
 
 # --- 4. CSS MODERNIZAÇÃO (Sidebar e UI) ---
+# --- CSS OPÇÃO 2 (Substitua na seção 4) ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
-    
-    /* Global e Sidebar */
-    html, body, [class*="css"], [data-testid="stSidebar"] { 
-        font-family: 'Space Grotesk', sans-serif !important; 
-    }
-    
     [data-testid="stSidebar"] {
-        background-color: #151514 !important; /* Fundo mais escuro */
-        border-right: 1px solid #333;
+        background: linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%) !important;
     }
 
-    /* Estilização do Menu de Navegação (st.radio) */
-    [data-testid="stSidebar"] .stRadio > div {
-        background-color: transparent;
-        padding: 0;
+    /* Estilo de "Pill" para as opções */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+        gap: 10px;
     }
 
-    [data-testid="stSidebar"] .stRadio label {
-        background-color: #1E1E1E; /* Cor dos botões do menu */
-        color: #FFFFFF !important;
-        padding: 12px 20px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        border: 1px solid #333;
-        transition: all 0.3s ease;
-        cursor: pointer;
-        display: block;
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 10px 15px !important;
+        transition: all 0.4s ease;
     }
 
-    /* Efeito de Hover (Passar o mouse) */
-    [data-testid="stSidebar"] .stRadio label:hover {
-        border-color: #8DF768;
-        transform: translateX(5px);
-    }
-
-    /* Item Selecionado */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input[checked] + label {
-        background-color: #8DF768 !important;
-        color: #000000 !important;
-        font-weight: 700;
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
+        background-color: rgba(141, 247, 104, 0.1);
         border-color: #8DF768;
     }
 
-    /* Esconde a bolinha do radio button original */
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-        font-size: 14px;
-        letter-spacing: 1px;
+    /* Quando selecionado */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div {
+        background-color: rgba(141, 247, 104, 0.2) !important;
+        border: 1px solid #8DF768 !important;
+        border-radius: 10px;
     }
-    
-    [data-testid="stSidebar"] .stRadio div[data-testid="stWidgetLabel"] p {
-        color: #8DF768;
-        font-weight: 700;
-        margin-bottom: 15px;
-    }
-
-    /* Header e Cards (Mantidos) */
-    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
-    .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
-    .candidate-name { font-size: 20px; font-weight: 700; color: #FFFFFF; }
-    .candidate-status { font-size: 14px; color: #8DF768; text-transform: uppercase; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -240,6 +208,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
