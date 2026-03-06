@@ -39,38 +39,71 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS MODERNIZAÇÃO (Sidebar e UI) ---
-# --- CSS OPÇÃO 2 (Substitua na seção 4) ---
+# --- 4. CSS MODERNIZAÇÃO (Sidebar Clean) ---
 st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    
+    /* Global e Fundo da Sidebar */
+    html, body, [class*="css"], [data-testid="stSidebar"] { 
+        font-family: 'Space Grotesk', sans-serif !important; 
+    }
+    
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%) !important;
+        background-color: #0E1117 !important; /* Cor padrão escura do Streamlit ou use #151514 */
     }
 
-    /* Estilo de "Pill" para as opções */
+    /* Remove o widget de rádio padrão (bolinhas e botões) */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
-        gap: 10px;
+        background-color: transparent !important;
+        display: flex;
+        flex-direction: column;
+        gap: 15px; /* Espaçamento entre os nomes */
     }
 
+    /* Estilo do Texto do Menu */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-        background-color: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 10px 15px !important;
-        transition: all 0.4s ease;
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        cursor: pointer;
     }
 
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
-        background-color: rgba(141, 247, 104, 0.1);
-        border-color: #8DF768;
+    /* Texto das opções não selecionadas */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p {
+        color: #888888 !important; /* Cinza discreto */
+        font-size: 18px !important;
+        font-weight: 400 !important;
+        transition: all 0.3s ease;
+        margin: 0 !important;
     }
 
-    /* Quando selecionado */
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div {
-        background-color: rgba(141, 247, 104, 0.2) !important;
-        border: 1px solid #8DF768 !important;
-        border-radius: 10px;
+    /* Texto da opção selecionada */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p {
+        color: #8DF768 !important; /* Verde Etus */
+        font-weight: 700 !important;
+        font-size: 20px !important;
     }
+
+    /* Efeito de passar o mouse apenas no texto */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover p {
+        color: #FFFFFF !important;
+    }
+
+    /* Esconde a bolinha do radio button de forma agressiva */
+    [data-testid="stSidebar"] [data-test="stWidgetSelectionColumn"] {
+        display: none !important;
+    }
+    
+    /* Remove bordas residuais */
+    div[data-testid="stRadio"] > label {
+        display: none !important;
+    }
+
+    /* Header e Cards (Mantidos para o resto do app) */
+    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; padding-left: 15px; }
+    .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -208,6 +241,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {set_clause} WHERE id = :id"), {**novos_valores, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
