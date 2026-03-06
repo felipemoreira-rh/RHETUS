@@ -202,23 +202,26 @@ elif menu == "🏢 VAGAS":
     if df_v.empty:
         st.info("Nenhuma vaga cadastrada no sistema.")
     else:
-        for _, row in df_v.iterrows():
-            # Card Expansível para cada vaga
-            with st.expander(f"🏢 {row['nome_vaga'].upper()} | {row['area']} | Status: {row['status_vaga']}"):
-                # Formulário de Edição Interno
-                with st.form(key=f"edit_vaga_{row['id']}"):
+        for index, row in df_v.iterrows():
+            # Fallback caso a coluna 'id' falhe: usa o índice do pandas ou o ID do banco
+            v_id = row['id'] if 'id' in row else index
+            v_nome = row['nome_vaga'] if 'nome_vaga' in row else "Sem Nome"
+            
+            # Card Expansível
+            with st.expander(f"🏢 {str(v_nome).upper()} | Status: {row.get('status_vaga', 'N/A')}"):
+                with st.form(key=f"edit_vaga_{v_id}"):
                     c_edit1, c_edit2, c_edit3 = st.columns(3)
                     
-                    novo_gestor = c_edit1.text_input("Gestor", value=row['gestor'])
+                    novo_gestor = c_edit1.text_input("Gestor", value=row.get('gestor', ''))
                     
-                    # Mantém a seleção da área correta
                     areas_lista = ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"]
-                    idx_area = areas_lista.index(row['area']) if row['area'] in areas_lista else 0
+                    atual_area = row.get('area', 'RH')
+                    idx_area = areas_lista.index(atual_area) if atual_area in areas_lista else 0
                     nova_area = c_edit2.selectbox("Departamento", areas_lista, index=idx_area)
                     
-                    # Seleção de Status
                     status_lista = ["Aberta", "Pausada", "Cancelada", "Finalizada"]
-                    idx_status = status_lista.index(row['status_vaga']) if row['status_vaga'] in status_lista else 0
+                    atual_status = row.get('status_vaga', 'Aberta')
+                    idx_status = status_lista.index(atual_status) if atual_status in status_lista else 0
                     novo_status = c_edit3.selectbox("Status Atual", status_lista, index=idx_status)
                     
                     if st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True):
@@ -227,18 +230,17 @@ elif menu == "🏢 VAGAS":
                                 UPDATE vagas 
                                 SET gestor = :g, area = :a, status_vaga = :s 
                                 WHERE id = :id
-                            """), {"g": novo_gestor, "a": nova_area, "s": novo_status, "id": row['id']})
+                            """), {"g": novo_gestor, "a": nova_area, "s": novo_status, "id": v_id})
                             conn.commit()
                         st.success("Vaga atualizada!")
                         st.rerun()
 
-                # Botão de Exclusão (fora do form de edição para evitar conflitos)
-                col_del_vaga, col_spacer = st.columns([1, 4])
-                if col_del_vaga.button(f"🗑️ EXCLUIR VAGA", key=f"del_v_{row['id']}", type="secondary", use_container_width=True):
+                # Botão de Exclusão
+                if st.button(f"🗑️ EXCLUIR VAGA", key=f"del_v_{v_id}", type="secondary"):
                     with engine.connect() as conn:
-                        conn.execute(text("DELETE FROM vagas WHERE id = :id"), {"id": row['id']})
+                        conn.execute(text("DELETE FROM vagas WHERE id = :id"), {"id": v_id})
                         conn.commit()
-                    st.warning(f"Vaga '{row['nome_vaga']}' removida.")
+                    st.warning("Vaga removida.")
                     st.rerun()
 # --- 9. CANDIDATOS (INCLUIR, GESTÃO E EXCLUIR) ---
 elif menu == "⚙️ CANDIDATOS":
@@ -354,6 +356,7 @@ elif menu == "🚀 ONBOARDING":
                 sets = ", ".join([f"{k}=:{k}" for k in novos_on.keys()])
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos_on, "id": int(c_data["id"])}); conn.commit()
             st.success("Onboarding atualizado!")
+
 
 
 
