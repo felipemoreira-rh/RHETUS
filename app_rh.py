@@ -13,13 +13,13 @@ try:
     DB_URL = st.secrets["postgres"]["url"]
     engine = create_engine(DB_URL, connect_args={"sslmode": "require"})
 except KeyError:
-    st.error("Erro nos Secrets.")
+    st.error("Erro nos Secrets do banco de dados.")
     st.stop()
 
-# --- 3. INICIALIZAÇÃO DE BANCO ---
+# --- 3. INICIALIZAÇÃO DE BANCO (Garante que as colunas existam) ---
 def inicializar_banco():
     with engine.connect() as conn:
-        # Colunas novas para VAGAS
+        # Colunas para VAGAS
         vagas_cols = {"gestor": "TEXT", "data_abertura": "DATE", "data_fechamento": "DATE"}
         for col, tipo in vagas_cols.items():
             try:
@@ -27,7 +27,7 @@ def inicializar_banco():
                 conn.commit()
             except: pass
         
-        # Colunas para candidatos
+        # Colunas para CANDIDATOS
         try:
             conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS entrevista_cultura DATE"))
             conn.commit()
@@ -42,60 +42,19 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS (REMOÇÃO AGRESSIVA DE BOLINHAS E SELETORES) ---
+# --- 4. CSS CUSTOMIZADO (Limpeza do Menu e Ícone de Carregamento) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
     
-    /* Fontes e Sidebar */
-    html, body, [class*="css"], [data-testid="stSidebar"] { 
-        font-family: 'Space Grotesk', sans-serif !important; 
-    }
-    [data-testid="stSidebar"] { background-color: #0E1117 !important; }
+    /* Remove a bolinha vermelha/seleção do menu lateral */
+    [data-testid="stSidebar"] [data-testid="stWidgetSelectionColumn"] { display: none !important; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { padding: 8px 0px !important; margin-left: -20px !important; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p { color: #777777 !important; font-size: 18px !important; transition: 0.3s; }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p { color: #8DF768 !important; font-weight: 700 !important; font-size: 20px !important; }
 
-    /* 1. ESCONDE O CÍRCULO/BOTÃO (RADIO) EM SI */
-    [data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stWidgetSelectionColumn"] {
-        display: none !important;
-    }
-
-    /* 2. REMOVE O ESPAÇAMENTO QUE A BOLINHA OCUPAVA */
-    [data-testid="stSidebar"] div[role="radiogroup"] > div {
-        gap: 0px !important;
-    }
-
-    /* 3. LIMPA QUALQUER FUNDO CINZA/VERMELHO AO CLICAR */
-    [data-testid="stSidebar"] div[role="radiogroup"] label {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        outline: none !important;
-        padding: 10px 0px !important;
-        cursor: pointer;
-    }
-
-    /* 4. ESTILO DO TEXTO (Navegação Limpa) */
-    /* Texto Inativo */
-    [data-testid="stSidebar"] div[role="radiogroup"] label p {
-        color: #777777 !important;
-        font-size: 18px !important;
-        font-weight: 400 !important;
-        margin-left: 0px !important;
-        transition: all 0.3s ease;
-    }
-
-    /* Texto Selecionado (Destaque em Verde Etus) */
-    [data-testid="stSidebar"] div[role="radiogroup"] input:checked + div p {
-        color: #8DF768 !important;
-        font-weight: 700 !important;
-        font-size: 20px !important;
-    }
-
-    /* Hover no texto */
-    [data-testid="stSidebar"] div[role="radiogroup"] label:hover p {
-        color: #FFFFFF !important;
-    }
-
-    /* --- CARREGAMENTO: BOLA DE FUTEBOL AMERICANO --- */
+    /* ÍCONE DE CARREGAMENTO: BOLA DE FUTEBOL AMERICANO */
     [data-testid="stStatusWidget"] { visibility: hidden; }
     [data-testid="stStatusWidget"]::before {
         content: '🏈'; 
@@ -110,169 +69,88 @@ st.markdown("""
     @keyframes footballSpiral {
         0% { transform: translateY(0px) rotate(0deg); filter: drop-shadow(0 0 0px #8DF768); }
         50% { transform: translateY(-8px) rotate(180deg) scale(1.1); filter: drop-shadow(0 0 12px #8DF768); }
-        100% { transform: translateY(0px) rotate(360deg); filter: drop-shadow(0 0 0px #8DF768); }
+        100% { transform: translateY(0px) rotate(360deg); }
     }
 
-    /* Layout Geral */
     .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
-    .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 5. FUNÇÕES DE CARGA ---
+# --- 5. FUNÇÕES DE DADOS ---
 def carregar_vagas():
     return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
 
 def carregar_candidatos_vaga(v_nome):
-    query = text("SELECT * FROM candidatos WHERE vaga_vinculada = :v ORDER BY id DESC")
+    query = text("SELECT * FROM candidatos WHERE vaga_vinculada = :v ORDER BY candidato ASC")
     return pd.read_sql(query, engine, params={"v": v_nome})
 
 def carregar_aprovados():
     return pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada' OR aprovacao_final = 'Sim' ORDER BY candidato", engine)
 
-# --- 6. SIDEBAR (NOMES DAS ABAS ATUALIZADOS) ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
-    # Nomes das abas atualizados conforme solicitado
     menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 7. INDICADORES (DASHBOARD DE ENVELHECIMENTO DE VAGAS) ---
+# --- 7. INDICADORES (AGING DE VAGAS) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_vagas()
     df_c = pd.read_sql("SELECT * FROM candidatos", engine)
     
     if not df_v.empty:
-        # --- CÁLCULO DE AGING (DIAS EM ABERTO) ---
         hoje = pd.Timestamp(datetime.now().date())
-        
-        # Converter datas e calcular dias
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
         df_v['data_fechamento'] = pd.to_datetime(df_v['data_fechamento'])
         
-        # Se estiver aberta, usa HOJE. Se fechada, usa DATA FECHAMENTO.
         df_v['dias_aberta'] = df_v.apply(
             lambda x: (hoje - x['data_abertura']).days if pd.isnull(x['data_fechamento']) 
             else (x['data_fechamento'] - x['data_abertura']).days, axis=1
         )
 
-        # --- CARDS DE MÉTRICAS ---
         c1, c2, c3, c4 = st.columns(4)
-        vagas_ativas = len(df_v[df_v['status_vaga'] == 'Aberta'])
-        media_dias = int(df_v['dias_aberta'].mean()) if not df_v.empty else 0
-        vaga_mais_antiga = df_v[df_v['status_vaga'] == 'Aberta']['dias_aberta'].max()
-        
-        c1.metric("📌 VAGAS ATIVAS", vagas_ativas)
-        c2.metric("⏱️ MÉDIA DE DIAS", f"{media_dias} dias")
-        c3.metric("⚠️ VAGA MAIS ANTIGA", f"{vaga_mais_antiga if pd.notnull(vaga_mais_antiga) else 0} dias")
+        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
+        c2.metric("⏱️ MÉDIA DE DIAS", f"{int(df_v['dias_aberta'].mean()) if not df_v.empty else 0} d")
+        c3.metric("⚠️ MAIOR AGING", f"{df_v['dias_aberta'].max()} d")
         c4.metric("✅ CONTRATAÇÕES", len(df_c[df_c["status_geral"] == "Finalizada"]))
 
         st.divider()
+        st.subheader("⏳ Dias em Aberto por Vaga")
+        fig_aging = px.bar(df_v[df_v['status_vaga'] == 'Aberta'], x='dias_aberta', y='nome_vaga', orientation='h', 
+                           color='dias_aberta', color_continuous_scale='Viridis', text='dias_aberta')
+        st.plotly_chart(fig_aging, use_container_width=True)
 
-        # --- GRÁFICO DE AGING ---
-        st.subheader("⏳ Tempo de Abertura por Vaga")
-        
-        # Filtrar apenas as que estão abertas para o gráfico de envelhecimento
-        df_grafico = df_v[df_v['status_vaga'] == 'Aberta'].sort_values('dias_aberta', ascending=True)
-        
-        if not df_grafico.empty:
-            fig_aging = px.bar(
-                df_grafico,
-                x='dias_aberta',
-                y='nome_vaga',
-                orientation='h',
-                text='dias_aberta',
-                labels={'dias_aberta': 'Dias em Aberto', 'nome_vaga': 'Vaga'},
-                color='dias_aberta',
-                color_continuous_scale=['#8DF768', '#F7D068', '#F76868'] # Verde -> Amarelo -> Vermelho
-            )
-            
-            fig_aging.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.8)
-            fig_aging.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color="#FFFFFF",
-                xaxis=dict(showgrid=False),
-                yaxis=dict(showgrid=False)
-            )
-            st.plotly_chart(fig_aging, use_container_width=True)
-        else:
-            st.info("Nenhuma vaga aberta no momento para exibir no gráfico.")
-
-        # --- STATUS DOS CANDIDATOS ---
-        st.divider()
-        st.subheader("👥 Funil de Candidatos (Geral)")
-        if not df_c.empty:
-            fig_funil = px.pie(df_c, names="status_geral", hole=.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_funil, use_container_width=True)
-    else:
-        st.info("Cadastre vagas para visualizar os indicadores.")
-
-# --- 8. VAGAS (ANTIGO GESTÃO DE VAGAS) ---
+# --- 8. VAGAS ---
 elif menu == "🏢 VAGAS":
-    st.subheader("Painel de Vagas")
-    with st.expander("➕ CRIAR NOVA VAGA"):
-        with st.form("f_vaga"):
+    st.subheader("Gestão de Vagas")
+    with st.expander("➕ CADASTRAR NOVA VAGA"):
+        with st.form("nova_vaga"):
             n_v = st.text_input("Nome da Vaga")
             a_v = st.selectbox("Departamento", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
-            g_v = st.text_input("Gestor Responsável")
+            g_v = st.text_input("Gestor")
             d_ab = st.date_input("Data Abertura", value=datetime.now())
-            if st.form_submit_button("CONFIRMAR"):
+            if st.form_submit_button("CRIAR"):
                 with engine.connect() as conn:
                     conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)"), 
                                  {"n": n_v, "a": a_v, "g": g_v, "d": d_ab})
                     conn.commit()
                 st.rerun()
 
-    st.divider()
     df_v = carregar_vagas()
     for _, row in df_v.iterrows():
-        v_id = row['id'] if 'id' in df_v.columns else None
-        v_nome_orig = row['nome_vaga']
-        v_key = v_id if v_id is not None else v_nome_orig
-        
-        d_ini = pd.to_datetime(row['data_abertura'])
-        d_fim = pd.to_datetime(row['data_fechamento']) if pd.notnull(row['data_fechamento']) else datetime.now()
-        dias = (d_fim - d_ini).days if pd.notnull(d_ini) else 0
-        
         with st.container(border=True):
-            c1, c2, c3 = st.columns([3, 2, 1])
-            c1.markdown(f"**{row['nome_vaga']}** ({row['area']})\n\n👤 Gestor: {row.get('gestor', 'N/A')}")
-            c2.write(f"⏱️ Aberta há: {dias} dias\n\n📅 Início: {row['data_abertura']}")
-            
-            if c3.button("📝 EDITAR", key=f"edbtn_{v_key}"):
-                st.session_state[f"edit_vaga_{v_key}"] = True
-            
-            if st.session_state.get(f"edit_vaga_{v_key}"):
-                with st.form(f"form_ed_{v_key}"):
-                    novo_n = st.text_input("Nome", value=row['nome_vaga'])
-                    novo_g = st.text_input("Gestor", value=row.get('gestor', ''))
-                    novo_s = st.selectbox("Status", ["Aberta", "Fechada", "Pausada"], index=0)
-                    dt_ab = st.date_input("Abertura", value=row['data_abertura'] if pd.notnull(row['data_abertura']) else datetime.now())
-                    dt_fc = st.date_input("Fechamento", value=row['data_fechamento'] if pd.notnull(row['data_fechamento']) else None)
-                    
-                    if st.form_submit_button("SALVAR"):
-                        with engine.connect() as conn:
-                            params = {"n": novo_n, "g": novo_g, "s": novo_s, "da": dt_ab, "df": dt_fc}
-                            if v_id is not None:
-                                params["id"] = v_id
-                                conn.execute(text("UPDATE vagas SET nome_vaga=:n, gestor=:g, status_vaga=:s, data_abertura=:da, data_fechamento=:df WHERE id=:id"), params)
-                            else:
-                                params["nome_orig"] = v_nome_orig
-                                conn.execute(text("UPDATE vagas SET nome_vaga=:n, gestor=:g, status_vaga=:s, data_abertura=:da, data_fechamento=:df WHERE nome_vaga=:nome_orig"), params)
-                            conn.commit()
-                        st.session_state[f"edit_vaga_{v_key}"] = False
-                        st.rerun()
+            col_v1, col_v2 = st.columns([4, 1])
+            col_v1.write(f"**{row['nome_vaga']}** | {row['area']} | Status: {row['status_vaga']}")
+            if col_v2.button("EDITAR", key=f"ed_{row['nome_vaga']}"):
+                st.info("Função de edição rápida em desenvolvimento.")
 
-# --- 9. CANDIDATOS (VERSÃO LIMPA COM EXPANDER) ---
+# --- 9. CANDIDATOS (VERSÃO LIMPA - CLIQUE PARA ABRIR) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
-    
     if not df_vagas.empty:
-        # Seletor de vaga no topo
-        v_sel = st.selectbox("Selecione a Vaga:", df_vagas["nome_vaga"].tolist())
+        v_sel = st.selectbox("Selecione a Vaga para listar os candidatos:", df_vagas["nome_vaga"].tolist())
         st.divider()
         
         df_c = carregar_candidatos_vaga(v_sel)
@@ -282,132 +160,66 @@ elif menu == "⚙️ CANDIDATOS":
         else:
             opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Teste Técnico", "Entrevista gestor", "Entrevista Cultura", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
             
-            # O SEGREDO ESTÁ AQUI: Cada candidato dentro de um expander
             for _, cand in df_c.iterrows():
-                # Título da barra que você vai clicar
-                with st.expander(f"👤 {cand['candidato']} | {cand['status_geral']}"):
+                # --- O EXPANDER É O QUE DEIXA A TELA LIMPA ---
+                with st.expander(f"👤 {cand['candidato'].upper()}  |  Etapa: {cand['status_geral']}"):
+                    st.write("")
+                    c_status, c_agenda = st.columns([1, 2])
                     
-                    # Tudo que está aqui dentro só aparece ao clicar no nome acima
-                    st.markdown("---")
-                    col1, col2 = st.columns([1, 2])
+                    with c_status:
+                        st.markdown("**Alterar Etapa**")
+                        novo_status = st.selectbox("Status", opcoes_status, 
+                                                   index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, 
+                                                   key=f"st_{cand['id']}", label_visibility="collapsed")
                     
-                    with col1:
-                        st.markdown("**Status da Etapa**")
-                        n_status = st.selectbox(
-                            "Mudar Status", 
-                            opcoes_status, 
-                            index=opcoes_status.index(cand['status_geral']) if cand['status_geral'] in opcoes_status else 0, 
-                            key=f"status_{cand['id']}",
-                            label_visibility="collapsed"
-                        )
-                    
-                    with col2:
+                    with c_agenda:
                         st.markdown("**Agendamentos**")
-                        c_rh, c_gs, c_cu = st.columns(3)
+                        ca1, ca2, ca3 = st.columns(3)
                         
-                        # Função para simplificar as datas
                         def input_data(col, label, data_db, k):
-                            check = col.checkbox(label, value=pd.notnull(data_db), key=f"ch_{k}_{cand['id']}")
+                            check = col.checkbox(label, value=pd.notnull(data_db), key=f"ck_{k}_{cand['id']}")
                             if check:
-                                return col.date_input("Data", value=data_db if pd.notnull(data_db) else datetime.now(), key=f"dt_{k}_{cand['id']}", label_visibility="collapsed")
+                                return col.date_input("Data", value=data_db if pd.notnull(data_db) else datetime.now(), 
+                                                       key=f"dt_{k}_{cand['id']}", label_visibility="collapsed")
                             return None
 
-                        res_rh = input_data(c_rh, "RH", cand['entrevista_rh'], "rh")
-                        res_gs = input_data(c_gs, "Gestor", cand['entrevista_gestor'], "gs")
-                        res_cu = input_data(c_cu, "Cultura", cand.get('entrevista_cultura'), "cu")
-
+                        res_rh = input_data(ca1, "RH", cand['entrevista_rh'], "rh")
+                        res_gs = input_data(ca2, "Gestor", cand['entrevista_gestor'], "gs")
+                        res_cu = input_data(ca3, "Cultura", cand.get('entrevista_cultura'), "cu")
+                    
                     st.write("")
-                    # Botão de salvar agora fica dentro do expander
-                    if st.button(f"💾 SALVAR ALTERAÇÕES: {cand['candidato'].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
+                    if st.button(f"💾 SALVAR DADOS DE {cand['candidato'].split()[0].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
                         with engine.connect() as conn:
-                            conn.execute(text("""
-                                UPDATE candidatos 
-                                SET status_geral=:s, entrevista_rh=:rh, entrevista_gestor=:gs, entrevista_cultura=:cu 
-                                WHERE id=:id
-                            """), {"s": n_status, "rh": res_rh, "gs": res_gs, "cu": res_cu, "id": cand['id']})
+                            conn.execute(text("UPDATE candidatos SET status_geral=:s, entrevista_rh=:rh, entrevista_gestor=:gs, entrevista_cultura=:cu WHERE id=:id"),
+                                         {"s": novo_status, "rh": res_rh, "gs": res_gs, "cu": res_cu, "id": cand['id']})
                             conn.commit()
                         st.success("Atualizado!")
                         st.rerun()
-    else:
-        st.warning("Crie uma vaga primeiro.")
 
-# --- 10. ONBOARDING (NOME CORRIGIDO) ---
+# --- 10. ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
-    st.subheader("Onboarding de Aprovados")
-    
-    # Carregamos os candidatos que já foram aprovados ou finalizados
     df_aprovados = carregar_aprovados()
-    
     if not df_aprovados.empty:
-        # Seletor do Candidato
         selecionado = st.selectbox("Selecione o Novo Colaborador:", df_aprovados["candidato"].tolist())
-        
-        # Filtramos os dados apenas desse candidato
         cand_data = df_aprovados[df_aprovados["candidato"] == selecionado].iloc[0]
         
-        st.markdown(f"### Checklist de Entrada: **{selecionado}**")
-        st.caption(f"Vaga: {cand_data['vaga_vinculada']}")
+        etapas = {"Envio Proposta": "envio_proposta", "Documentos": "solic_documentos", "Fotos": "solic_fotos", 
+                  "Contrato": "solic_contrato", "Acessos": "solic_acessos", "RH Gestor": "cad_rh_gestor", 
+                  "STARBEM": "cad_starbem", "Dasa": "cad_dasa", "AVUS": "cad_avus", 
+                  "Agend. Onboarding": "agend_onboarding", "Envio Gestor": "envio_gestor"}
         
-        # Mapeamento de Labels Amigáveis para as Colunas do Banco
-        etapas = {
-            "Envio de Proposta": "envio_proposta",
-            "Coleta de Documentos": "solic_documentos",
-            "Fotos para Crachá/Perfil": "solic_fotos",
-            "Assinatura de Contrato": "solic_contrato",
-            "Criação de Acessos": "solic_acessos",
-            "Cadastro RH/Gestor": "cad_rh_gestor",
-            "Benefício: STARBEM": "cad_starbem",
-            "Benefício: Dasa": "cad_dasa",
-            "Benefício: AVUS": "cad_avus",
-            "Agendamento de Onboarding": "agend_onboarding",
-            "Envio ao Gestor": "envio_gestor"
-        }
-        
-        novos_status = {}
-        
-        # Organizamos o Checklist em duas colunas para ocupar melhor a tela
-        col_on1, col_on2 = st.columns(2)
-        
+        novos = {}
+        st.markdown(f"### Checklist: {selecionado}")
+        c_on1, c_on2 = st.columns(2)
         for i, (label, col_db) in enumerate(etapas.items()):
-            # Alterna entre coluna 1 e 2
-            target_col = col_on1 if i < 6 else col_on2
+            target = c_on1 if i < 6 else c_on2
+            novos[col_db] = target.checkbox(label, value=bool(cand_data.get(col_db, False)), key=f"on_{cand_data['id']}_{col_db}")
             
-            # Pegamos o valor atual no banco (converte para bool para o checkbox)
-            valor_atual = bool(cand_data.get(col_db, False))
-            
-            # Criamos o checkbox
-            novos_status[col_db] = target_col.checkbox(
-                label, 
-                value=valor_atual, 
-                key=f"chk_on_{cand_data['id']}_{col_db}"
-            )
-            
-        st.divider()
-        
-        # Botão para Salvar as alterações no Onboarding
-        if st.button("💾 SALVAR PROGRESSO DO ONBOARDING", use_container_width=True):
+        if st.button("💾 SALVAR ONBOARDING", use_container_width=True):
             with engine.connect() as conn:
-                # Montamos o comando UPDATE dinamicamente
-                clausula_set = ", ".join([f"{k} = :{k}" for k in novos_status.keys()])
-                query_update = text(f"UPDATE candidatos SET {clausula_set} WHERE id = :id")
-                
-                # Executamos passando o dicionário de novos status + o ID do candidato
-                conn.execute(query_update, {**novos_status, "id": int(cand_data["id"])})
+                sets = ", ".join([f"{k}=:{k}" for k in novos.keys()])
+                conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
                 conn.commit()
-                
-            st.success(f"Progresso de {selecionado} atualizado com sucesso!")
-            st.balloons() # Efeito visual de comemoração
-            st.rerun()
+            st.success("Progresso salvo!")
     else:
-        st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
-        st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
-
-
-
-
-
-
-
-
-
-
+        st.info("Nenhum candidato aprovado para onboarding.")
