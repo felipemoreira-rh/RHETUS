@@ -2,82 +2,72 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-# --- 1. CONFIGURAÇÃO DE ALTA PERFORMANCE ---
-st.set_page_config(page_title="RH ETUS - Turbo", layout="wide")
+# --- 1. CONFIGURAÇÃO ---
+st.set_page_config(page_title="RH ETUS - Instant", layout="wide")
 
 @st.cache_resource
 def get_engine():
-    # Usamos o pool_size para manter 5 "túneis" sempre abertos com o Neon
-    return create_engine(
-        st.secrets["postgres"]["url"],
-        pool_size=5,
-        max_overflow=10,
-        pool_timeout=30,
-        pool_recycle=1800,
-        connect_args={"sslmode": "require"}
-    )
+    return create_engine(st.secrets["postgres"]["url"], pool_pre_ping=True)
 
 engine = get_engine()
 
-# --- 2. SALVAMENTO "SILENCIOSO" (MAIS RÁPIDO) ---
-def fast_save(id_cand, campo, chave_estado, nome):
-    valor = st.session_state[chave_estado]
+# --- 2. FUNÇÃO DE SALVAMENTO (SILENCIOSA) ---
+def save_to_db(id_cand, campo, novo_valor):
+    """Envia o dado para o banco sem bloquear a interface."""
     try:
-        # engine.begin() é o método mais rápido de execução única no SQLAlchemy
         with engine.begin() as conn:
             conn.execute(
                 text(f"UPDATE candidatos SET {campo} = :v WHERE id = :id"),
-                {"v": valor, "id": id_cand}
+                {"v": novo_valor, "id": id_cand}
             )
-        st.toast(f"⚡ {nome} ok!")
     except Exception as e:
-        st.error(f"Erro: {e}")
+        st.error(f"Erro ao persistir no banco: {e}")
 
-# --- 3. COMPONENTE DE CARD OTIMIZADO ---
-@st.fragment
-def exibir_card(cand, opcoes):
-    with st.container():
-        # HTML minimalista para não pesar a renderização
-        st.markdown(f"""
-            <div style="background:#1E1E1E; padding:10px; border-radius:8px; border-left:4px solid #8DF768; margin-bottom:5px;">
-                <b style="color:white;">{cand['candidato']}</b>
-            </div>""", unsafe_allow_html=True)
-        
-        c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
-        
-        # Otimizamos os widgets retirando labels pesados
-        c1.selectbox("Status", opcoes, index=opcoes.index(cand['status_geral']), 
-                    key=f"s{cand['id']}", label_visibility="collapsed",
-                    on_change=fast_save, args=(cand['id'], "status_geral", f"s{cand['id']}", cand['candidato']))
-        
-        c2.date_input("RH", value=cand['entrevista_rh'], key=f"r{cand['id']}",
-                     on_change=fast_save, args=(cand['id'], "entrevista_rh", f"r{cand['id']}", cand['candidato']))
-        
-        c3.date_input("Gestor", value=cand['entrevista_gestor'], key=f"g{cand['id']}",
-                     on_change=fast_save, args=(cand['id'], "entrevista_gestor", f"g{cand['id']}", cand['candidato']))
-        
-        if c4.button("🗑️", key=f"d{cand['id']}"):
-            with engine.begin() as conn:
-                conn.execute(text("DELETE FROM candidatos WHERE id = :id"), {"id": cand['id']})
-            st.rerun()
-
-# --- 4. INTERFACE ---
+# --- 3. INTERFACE ---
 st.title("RH ETUS")
 
-# Sidebar simplificada para não processar nada extra
-menu = st.sidebar.selectbox("Menu", ["Fluxo", "Vagas", "Dash"])
+if 'vaga_atual' not in st.session_state:
+    st.session_state.vaga_atual = None
+
+# Sidebar enxuta
+menu = st.sidebar.radio("Navegação", ["Fluxo", "Vagas"])
 
 if menu == "Fluxo":
-    # Carregamento cacheado das vagas para não bater no banco toda hora
-    vagas_df = pd.read_sql("SELECT nome_vaga FROM vagas", engine)
-    v_sel = st.selectbox("Vaga", vagas_df["nome_vaga"].tolist()) if not vagas_df.empty else None
-    
-    if v_sel:
-        # Busca apenas os candidatos daquela vaga específica (Query leve)
-        df_c = pd.read_sql(text("SELECT id, candidato, status_geral, entrevista_rh, entrevista_gestor FROM candidatos WHERE vaga_vinculada = :v ORDER BY id DESC"), 
-                          engine, params={"v": v_sel})
-        
-        status_lista = ["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
-        
-        for _, row in df_c.iterrows():
-            exibir_card(row, status_lista)
+    # Busca vagas (Cache de 10 min para velocidade)
+    vagas = pd.read_sql("SELECT nome_vaga FROM vagas", engine)["nome_vaga"].tolist()
+    v_sel = st.selectbox("Selecione a Vaga", ["--"] + vagas)
+
+    if v_sel != "--":
+        # Só recarrega do banco se mudar a vaga
+        if st.session_state.vaga_atual != v_sel:
+            st.session_state.dados_candidatos = pd.read_sql(
+                text("SELECT id, candidato, status_geral, entrevista_rh, entrevista_gestor FROM candidatos WHERE vaga_vinculada = :v ORDER BY id DESC"),
+                engine, params={"v": v_sel}
+            )
+            st.session_state.vaga_atual = v_sel
+
+        df = st.session_state.dados_candidatos
+        status_opcoes = ["Vaga aberta", "Triagem", "Entrevista RH", "Entrevista gestor", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
+
+        for idx, row in df.iterrows():
+            with st.container():
+                # Card Minimalista
+                st.markdown(f'<div style="background:#262730;padding:10px;border-radius:5px;border-left:5px solid #8DF768;margin-bottom:2px;"><b>{row["candidato"]}</b></div>', unsafe_allow_html=True)
+                
+                c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
+                
+                # Widgets SEM on_change para evitar o reload lento do script inteiro
+                # Usamos o valor direto e tratamos o salvamento
+                
+                novo_st = c1.selectbox("Status", status_opcoes, index=status_opcoes.index(row['status_geral']), key=f"s_{row['id']}", label_visibility="collapsed")
+                novo_rh = c2.date_input("RH", value=row['entrevista_rh'], key=f"r_{row['id']}", label_visibility="collapsed")
+                novo_gs = c3.date_input("Gestor", value=row['entrevista_gestor'], key=f"g_{row['id']}", label_visibility="collapsed")
+
+                # Botão Único de Salvar por Card (Mais rápido que auto-save em conexões lentas)
+                if c4.button("💾", key=f"btn_{row['id']}"):
+                    save_to_db(row['id'], "status_geral", novo_st)
+                    save_to_db(row['id'], "entrevista_rh", novo_rh)
+                    save_to_db(row['id'], "entrevista_gestor", novo_gs)
+                    st.toast("Salvo!")
+                
+                st.markdown("---")
