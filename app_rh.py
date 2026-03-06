@@ -89,7 +89,7 @@ with st.sidebar:
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 7. INDICADORES (DASHBOARD DE PERFORMANCE) ---
+# --- 7. INDICADORES ---
 if menu == "📊 INDICADORES":
     df_v = carregar_vagas()
     df_c = pd.read_sql("SELECT * FROM candidatos", engine)
@@ -142,20 +142,50 @@ elif menu == "🏢 VAGAS":
         with st.container(border=True):
             st.write(f"**{row['nome_vaga']}** | {row['area']} | Gestor: {row['gestor']} | Status: {row['status_vaga']}")
 
-# --- 9. CANDIDATOS (LISTA LIMPA + HISTÓRICO AUTOMÁTICO) ---
+# --- 9. CANDIDATOS (INCLUSÃO, EXCLUSÃO E HISTÓRICO) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
+    
+    # --- SUB-SEÇÃO: INCLUIR CANDIDATO ---
+    with st.expander("➕ ADICIONAR NOVO CANDIDATO"):
+        if not df_vagas.empty:
+            with st.form("form_novo_candidato"):
+                nome_c = st.text_input("Nome Completo")
+                vaga_c = st.selectbox("Vincular à Vaga", df_vagas["nome_vaga"].tolist())
+                status_inicial = "Triagem"
+                
+                if st.form_submit_button("CADASTRAR CANDIDATO"):
+                    if nome_c:
+                        with engine.connect() as conn:
+                            conn.execute(text("""
+                                INSERT INTO candidatos (candidato, vaga_vinculada, status_geral, historico) 
+                                VALUES (:n, :v, :s, :h)
+                            """), {
+                                "n": nome_c, 
+                                "v": vaga_c, 
+                                "s": status_inicial,
+                                "h": f"➔ {datetime.now().strftime('%d/%m/%Y %H:%M')}: Candidato criado na etapa '{status_inicial}'\n"
+                            })
+                            conn.commit()
+                        st.success(f"Candidato {nome_c} adicionado!")
+                        st.rerun()
+                    else:
+                        st.error("Por favor, preencha o nome do candidato.")
+        else:
+            st.warning("Cadastre uma vaga primeiro para poder adicionar candidatos.")
+
+    st.divider()
+
     if not df_vagas.empty:
-        v_sel = st.selectbox("Selecione a Vaga:", df_vagas["nome_vaga"].tolist())
-        st.divider()
+        v_sel = st.selectbox("Filtrar por Vaga:", df_vagas["nome_vaga"].tolist())
         df_c = carregar_candidatos_vaga(v_sel)
         
-        if df_c.empty: st.info("Nenhum candidato para esta vaga.")
+        if df_c.empty: 
+            st.info("Nenhum candidato para esta vaga.")
         else:
             opcoes_status = ["Vaga aberta", "Triagem", "Entrevista RH", "Teste Técnico", "Entrevista gestor", "Entrevista Cultura", "Solicitação de documentos", "Solicitação de contratos", "Finalizada"]
             
             for _, cand in df_c.iterrows():
-                # O Expander garante que a tela fique limpa: só o nome aparece
                 with st.expander(f"👤 {cand['candidato'].upper()}  |  Fase Atual: {cand['status_geral']}"):
                     st.write("")
                     col_st, col_dt = st.columns([1, 2])
@@ -175,9 +205,12 @@ elif menu == "⚙️ CANDIDATOS":
                         res_gs = input_dt(c_gs, "Gestor", cand['entrevista_gestor'], "gs")
                         res_cu = input_dt(c_cu, "Cultura", cand.get('entrevista_cultura'), "cu")
 
-                    # Botão Salvar com Histórico Automático
-                    if st.button(f"💾 ATUALIZAR {cand['candidato'].split()[0].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
-                        # Lógica do Log Automático
+                    st.write("")
+                    
+                    # BOTÕES DE AÇÃO (Salvar e Excluir)
+                    btn_col1, btn_col2 = st.columns([4, 1])
+                    
+                    if btn_col1.button(f"💾 ATUALIZAR {cand['candidato'].split()[0].upper()}", key=f"sv_{cand['id']}", use_container_width=True):
                         hist = cand.get('historico') if cand.get('historico') else ""
                         if novo_st != cand['status_geral']:
                             log = f"➔ {datetime.now().strftime('%d/%m/%Y %H:%M')}: De '{cand['status_geral']}' para '{novo_st}'\n"
@@ -187,6 +220,14 @@ elif menu == "⚙️ CANDIDATOS":
                             conn.execute(text("UPDATE candidatos SET status_geral=:s, entrevista_rh=:rh, entrevista_gestor=:gs, entrevista_cultura=:cu, historico=:h WHERE id=:id"),
                                          {"s": novo_st, "rh": res_rh, "gs": res_gs, "cu": res_cu, "h": hist, "id": cand['id']}); conn.commit()
                         st.success("Movimentação registrada!"); st.rerun()
+
+                    # --- FUNCIONALIDADE: EXCLUIR CANDIDATO ---
+                    if btn_col2.button(f"🗑️ EXCLUIR", key=f"del_{cand['id']}", use_container_width=True, help="Remover permanentemente"):
+                        with engine.connect() as conn:
+                            conn.execute(text("DELETE FROM candidatos WHERE id = :id"), {"id": cand['id']})
+                            conn.commit()
+                        st.warning(f"Candidato removido.")
+                        st.rerun()
 
                     if cand.get('historico'):
                         st.caption("📜 Últimas Movimentações:")
