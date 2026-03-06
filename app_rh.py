@@ -100,8 +100,11 @@ if menu == "📊 INDICADORES":
         
         st.markdown("### 📈 Performance do Recrutamento")
         c1, c2, c3, c4 = st.columns(4)
-        v_ativas = df_v[df_v['status_vaga'] == 'Aberta']
-        avg_aging = int(v_ativas['data_abertura'].apply(lambda x: (hoje - x).days).mean()) if not v_ativas.empty else 0
+        v_ativas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
+        
+        # Cálculo de Aging (Tempo de Vaga Aberta)
+        v_ativas['aging'] = v_ativas['data_abertura'].apply(lambda x: (hoje - x).days)
+        avg_aging = int(v_ativas['aging'].mean()) if not v_ativas.empty else 0
         
         c1.metric("📌 VAGAS ABERTAS", len(v_ativas))
         c2.metric("⏱️ AGING MÉDIO", f"{avg_aging} dias")
@@ -109,21 +112,58 @@ if menu == "📊 INDICADORES":
         c4.metric("✅ CONTRATAÇÕES", len(df_c[df_c['status_geral'] == 'Finalizada']))
 
         st.divider()
-        st.subheader("⏳ Lead Time por Etapa (Acumulado)")
-        df_c['entrevista_rh'] = pd.to_datetime(df_c['entrevista_rh'])
-        df_c['entrevista_gestor'] = pd.to_datetime(df_c['entrevista_gestor'])
-        df_c['entrevista_cultura'] = pd.to_datetime(df_c['entrevista_cultura'])
+
+        # --- NOVO DASHBOARD: GESTÃO DE TEMPO DE VAGA ABERTA ---
+        st.subheader("🕒 Tempo de Abertura por Vaga (Aging)")
+        if not v_ativas.empty:
+            fig_aging = px.bar(
+                v_ativas, 
+                x='aging', 
+                y='nome_vaga', 
+                orientation='h',
+                title="Dias decorridos desde a abertura",
+                labels={'aging': 'Dias em Aberto', 'nome_vaga': 'Vaga'},
+                color='aging',
+                color_continuous_scale='Greens'
+            )
+            fig_aging.update_layout(showlegend=False)
+            st.plotly_chart(fig_aging, use_container_width=True)
+        else:
+            st.info("Nenhuma vaga aberta no momento.")
+
+        st.divider()
+
+        # --- LEAD TIME POR ETAPA (SEPARADO POR VAGA) ---
+        st.subheader("⏳ Lead Time por Etapa (Detalhado por Vaga)")
+        
+        # Conversão de datas para cálculo
+        for col in ['entrevista_rh', 'entrevista_gestor', 'entrevista_cultura']:
+            df_c[col] = pd.to_datetime(df_c[col])
         
         df_dash = df_c.merge(df_v[['nome_vaga', 'data_abertura']], left_on='vaga_vinculada', right_on='nome_vaga')
+        df_dash['data_abertura'] = pd.to_datetime(df_dash['data_abertura'])
+        
+        # Cálculos de intervalos
         df_dash['Abertura -> RH'] = (df_dash['entrevista_rh'] - df_dash['data_abertura']).dt.days.clip(lower=0)
         df_dash['RH -> Gestor'] = (df_dash['entrevista_gestor'] - df_dash['entrevista_rh']).dt.days.clip(lower=0)
         df_dash['Gestor -> Cultura'] = (df_dash['entrevista_cultura'] - df_dash['entrevista_gestor']).dt.days.clip(lower=0)
         
-        fig_lead = px.bar(df_dash, y="candidato", x=['Abertura -> RH', 'RH -> Gestor', 'Gestor -> Cultura'],
-                          orientation='h', barmode="stack", color_discrete_sequence=["#8DF768", "#4CAF50", "#1B5E20"])
+        # Agrupando por Vaga e Candidato para visualização segmentada
+        fig_lead = px.bar(
+            df_dash, 
+            y="vaga_vinculada", # Alterado para agrupar por vaga no eixo Y
+            x=['Abertura -> RH', 'RH -> Gestor', 'Gestor -> Cultura'],
+            hover_data=["candidato"],
+            title="Lead Time Acumulado por Vaga",
+            orientation='h', 
+            barmode="stack", 
+            color_discrete_sequence=["#8DF768", "#4CAF50", "#1B5E20"]
+        )
+        fig_lead.update_layout(xaxis_title="Total de Dias", yaxis_title="Vagas")
         st.plotly_chart(fig_lead, use_container_width=True)
+
     else:
-        st.info("💡 Sem dados suficientes para o Dashboard.")
+        st.info("💡 Sem dados suficientes para o Dashboard. Certifique-se de que há vagas e candidatos cadastrados.")
 
 # --- 8. VAGAS ---
 elif menu == "🏢 VAGAS":
@@ -256,4 +296,5 @@ elif menu == "🚀 ONBOARDING":
                 sets = ", ".join([f"{k}=:{k}" for k in novos_on.keys()])
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos_on, "id": int(c_data["id"])}); conn.commit()
             st.success("Onboarding atualizado!")
+
 
