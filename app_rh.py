@@ -183,7 +183,7 @@ elif menu == "⚙️ CANDIDATOS":
                             col_st, col_del = st.columns([3, 1])
                             
                             # Atualização de Status
-                            etapas = ["Triagem", "Entrevista RH", "Teste técnico", "Entrevista gestor", "Entrevista Cultura", "Finalizada"]
+                            etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                             idx_atual = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
                             
                             novo_st = col_st.selectbox("Mover para:", etapas, index=idx_atual, key=f"sel_{cid}")
@@ -243,6 +243,7 @@ elif menu == "🚀 ONBOARDING":
             st.success("Progresso salvo!"); st.rerun()
     else:
         st.info("💡 Mova candidatos para o status 'Finalizada' para iniciar o Onboarding.")
+
 
 
 
