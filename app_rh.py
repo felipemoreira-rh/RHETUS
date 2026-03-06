@@ -42,45 +42,7 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS (DESIGN E ANIMAÇÃO DE LANÇAMENTO DE FUTEBOL AMERICANO) ---
-st.markdown("""
-    <style>
-    /* ... (Mantenha seu CSS anterior aqui) ... */
-
-    /* 1. ESCONDE O ÍCONE DE CARREGAMENTO PADRÃO DO STREAMLIT */
-    [data-testid="stStatusWidget"] {
-        visibility: hidden;
-    }
-
-    /* 2. CRIA O ESPAÇO PARA O GIF NO TOPO DIREITO */
-    [data-testid="stStatusWidget"]::before {
-        content: ' '; /* Espaço em branco para renderizar o fundo */
-        visibility: visible;
-        position: fixed;
-        top: 10px;    /* Distância do topo */
-        right: 20px;  /* Distância da direita */
-        width: 100px; /* Largura do GIF */
-        height: 100px; /* Altura do GIF */
-        
-        /* 3. LINK DIRETO PARA O GIF DO ATLETA LANÇANDO */
-        /* Eu usei um exemplo clássico, mas você pode trocar esse link se preferir outro GIF */
-        background-image: url('https://media.giphy.com/media/3o7TKrEGD5AAB7Gv8Q/giphy.gif'); 
-        background-size: contain;
-        background-repeat: no-repeat;
-        background-position: center;
-        z-index: 999999;
-        
-        /* Opcional: Efeito de borda neon verde Etus */
-        border: 2px solid #8DF768;
-        border-radius: 50%;
-        box-shadow: 0 0 10px rgba(141, 247, 104, 0.5);
-    }
-
-    /* Estilo do Header e Cards mantidos */
-    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
-    .candidate-card { background-color: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
-    </style>
-    """, unsafe_allow_html=True)
+V
 
 # --- 5. FUNÇÕES DE CARGA ---
 def carregar_vagas():
@@ -277,6 +239,7 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
 
 
 
