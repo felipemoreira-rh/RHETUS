@@ -78,17 +78,76 @@ with st.sidebar:
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 7. INDICADORES (ANTIGO DASHBOARD) ---
+# --- 7. INDICADORES (DASHBOARD DE ENVELHECIMENTO DE VAGAS) ---
 if menu == "📊 INDICADORES":
+    df_v = carregar_vagas()
     df_c = pd.read_sql("SELECT * FROM candidatos", engine)
-    if not df_c.empty:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("📌 CANDIDATOS ATIVOS", len(df_c))
-        c2.metric("✅ CONTRATAÇÕES", len(df_c[df_c["status_geral"] == "Finalizada"]))
-        c3.metric("🏢 VAGAS NO SISTEMA", len(pd.read_sql("SELECT * FROM vagas", engine)))
+    
+    if not df_v.empty:
+        # --- CÁLCULO DE AGING (DIAS EM ABERTO) ---
+        hoje = pd.Timestamp(datetime.now().date())
+        
+        # Converter datas e calcular dias
+        df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
+        df_v['data_fechamento'] = pd.to_datetime(df_v['data_fechamento'])
+        
+        # Se estiver aberta, usa HOJE. Se fechada, usa DATA FECHAMENTO.
+        df_v['dias_aberta'] = df_v.apply(
+            lambda x: (hoje - x['data_abertura']).days if pd.isnull(x['data_fechamento']) 
+            else (x['data_fechamento'] - x['data_abertura']).days, axis=1
+        )
+
+        # --- CARDS DE MÉTRICAS ---
+        c1, c2, c3, c4 = st.columns(4)
+        vagas_ativas = len(df_v[df_v['status_vaga'] == 'Aberta'])
+        media_dias = int(df_v['dias_aberta'].mean()) if not df_v.empty else 0
+        vaga_mais_antiga = df_v[df_v['status_vaga'] == 'Aberta']['dias_aberta'].max()
+        
+        c1.metric("📌 VAGAS ATIVAS", vagas_ativas)
+        c2.metric("⏱️ MÉDIA DE DIAS", f"{media_dias} dias")
+        c3.metric("⚠️ VAGA MAIS ANTIGA", f"{vaga_mais_antiga if pd.notnull(vaga_mais_antiga) else 0} dias")
+        c4.metric("✅ CONTRATAÇÕES", len(df_c[df_c["status_geral"] == "Finalizada"]))
+
         st.divider()
-        fig = px.pie(df_c, names="status_geral", hole=.4, color_discrete_sequence=['#8DF768', '#4A4A4A', '#222222'])
-        st.plotly_chart(fig, use_container_width=True)
+
+        # --- GRÁFICO DE AGING ---
+        st.subheader("⏳ Tempo de Abertura por Vaga")
+        
+        # Filtrar apenas as que estão abertas para o gráfico de envelhecimento
+        df_grafico = df_v[df_v['status_vaga'] == 'Aberta'].sort_values('dias_aberta', ascending=True)
+        
+        if not df_grafico.empty:
+            fig_aging = px.bar(
+                df_grafico,
+                x='dias_aberta',
+                y='nome_vaga',
+                orientation='h',
+                text='dias_aberta',
+                labels={'dias_aberta': 'Dias em Aberto', 'nome_vaga': 'Vaga'},
+                color='dias_aberta',
+                color_continuous_scale=['#8DF768', '#F7D068', '#F76868'] # Verde -> Amarelo -> Vermelho
+            )
+            
+            fig_aging.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.8)
+            fig_aging.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color="#FFFFFF",
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=False)
+            )
+            st.plotly_chart(fig_aging, use_container_width=True)
+        else:
+            st.info("Nenhuma vaga aberta no momento para exibir no gráfico.")
+
+        # --- STATUS DOS CANDIDATOS ---
+        st.divider()
+        st.subheader("👥 Funil de Candidatos (Geral)")
+        if not df_c.empty:
+            fig_funil = px.pie(df_c, names="status_geral", hole=.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_funil, use_container_width=True)
+    else:
+        st.info("Cadastre vagas para visualizar os indicadores.")
 
 # --- 8. VAGAS (ANTIGO GESTÃO DE VAGAS) ---
 elif menu == "🏢 VAGAS":
@@ -194,3 +253,4 @@ elif menu == "🚀 ONBOARDING":
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos, "id": int(cand_data["id"])})
                 conn.commit()
             st.success("Salvo!")
+
