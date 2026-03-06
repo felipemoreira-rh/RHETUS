@@ -42,24 +42,53 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 4. CSS (DESIGN E ANIMAÇÃO DA BOLA DE FUTEBOL AMERICANO) ---
+# --- 4. CSS (LIMPEZA TOTAL DO MENU LATERAL) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
     
-    /* Configurações de Fonte e Sidebar (Preservando seu estilo) */
-    html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
+    /* Fontes e Fundo da Sidebar */
+    html, body, [class*="css"], [data-testid="stSidebar"] { 
+        font-family: 'Space Grotesk', sans-serif !important; 
+    }
     [data-testid="stSidebar"] { background-color: #0E1117 !important; }
-    [data-testid="stSidebar"] [data-test="stWidgetSelectionColumn"] { display: none !important; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p { color: #777777 !important; font-size: 18px !important; }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p { color: #8DF768 !important; font-weight: 700 !important; }
 
-    /* 1. ESCONDE O ÍCONE DE CARREGAMENTO PADRÃO */
-    [data-testid="stStatusWidget"] {
-        visibility: hidden;
+    /* 1. ESCONDE A BOLINHA DE SELEÇÃO E O CONTAINER DO BOTÃO */
+    [data-testid="stSidebar"] [data-testid="stWidgetSelectionColumn"] {
+        display: none !important;
     }
 
-    /* 2. CRIA A BOLA DE FUTEBOL AMERICANO ANIMADA */
+    /* 2. REMOVE QUALQUER BORDA OU FUNDO AO REDOR DO TEXTO */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+        background-color: transparent !important;
+        border: none !important;
+    }
+
+    /* 3. ESTILO DO TEXTO DO MENU */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 8px 0px !important;
+    }
+
+    /* Texto Inativo (Cinza) */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] p {
+        color: #777777 !important;
+        font-size: 18px !important;
+        font-weight: 400 !important;
+        transition: color 0.3s ease;
+    }
+
+    /* Texto Selecionado (Verde Etus e Negrito) */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] input:checked + div p {
+        color: #8DF768 !important;
+        font-weight: 700 !important;
+        font-size: 20px !important;
+    }
+
+    /* --- ANIMAÇÃO DA BOLA DE FUTEBOL AMERICANO (CARREGAMENTO) --- */
+    [data-testid="stStatusWidget"] { visibility: hidden; }
     [data-testid="stStatusWidget"]::before {
         content: '🏈'; 
         visibility: visible;
@@ -70,21 +99,10 @@ st.markdown("""
         z-index: 999999;
         animation: footballSpiral 1.2s ease-in-out infinite;
     }
-
-    /* 3. ANIMAÇÃO DE LANÇAMENTO EM ESPIRAL */
     @keyframes footballSpiral {
-        0% {
-            transform: translateY(0px) rotate(0deg);
-            filter: drop-shadow(0 0 0px #8DF768);
-        }
-        50% {
-            transform: translateY(-8px) rotate(180deg) scale(1.1);
-            filter: drop-shadow(0 0 12px #8DF768); /* Brilho verde Etus */
-        }
-        100% {
-            transform: translateY(0px) rotate(360deg);
-            filter: drop-shadow(0 0 0px #8DF768);
-        }
+        0% { transform: translateY(0px) rotate(0deg); filter: drop-shadow(0 0 0px #8DF768); }
+        50% { transform: translateY(-8px) rotate(180deg) scale(1.1); filter: drop-shadow(0 0 12px #8DF768); }
+        100% { transform: translateY(0px) rotate(360deg); filter: drop-shadow(0 0 0px #8DF768); }
     }
 
     /* Layout Geral */
@@ -341,6 +359,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Ainda não há candidatos aprovados para iniciar o processo de Onboarding.")
         st.write("Dica: Altere o status de um candidato para 'Finalizada' ou marque 'Sim' em Aprovação Final na aba anterior.")
+
 
 
 
