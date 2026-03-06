@@ -165,23 +165,81 @@ if menu == "📊 INDICADORES":
     else:
         st.info("💡 Sem dados suficientes para o Dashboard. Adicione vagas e candidatos para visualizar os indicadores.")
 
-# --- 8. VAGAS ---
+# --- 8. VAGAS (CADASTRO, EDIÇÃO E EXCLUSÃO) ---
 elif menu == "🏢 VAGAS":
     st.subheader("Gestão de Vagas")
-    with st.expander("➕ CADASTRAR NOVA VAGA"):
-        with st.form("n_vaga"):
-            n_v = st.text_input("Nome da Vaga"); a_v = st.selectbox("Departamento", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
-            g_v = st.text_input("Gestor"); d_ab = st.date_input("Data Abertura", value=datetime.now())
-            if st.form_submit_button("CRIAR VAGA"):
-                with engine.connect() as conn:
-                    conn.execute(text("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)"), {"n": n_v, "a": a_v, "g": g_v, "d": d_ab}); conn.commit()
-                st.rerun()
+    
+    # --- FORMULÁRIO PARA CADASTRAR NOVA VAGA ---
+    with st.expander("➕ CADASTRAR NOVA VAGA", expanded=False):
+        with st.form("n_vaga", clear_on_submit=True):
+            col_v1, col_v2 = st.columns(2)
+            n_v = col_v1.text_input("Nome da Vaga")
+            a_v = col_v2.selectbox("Departamento", ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"])
+            
+            col_v3, col_v4 = st.columns(2)
+            g_v = col_v3.text_input("Gestor Responsável")
+            d_ab = col_v4.date_input("Data de Abertura", value=datetime.now())
+            
+            if st.form_submit_button("🚀 CRIAR VAGA", use_container_width=True):
+                if n_v and g_v:
+                    with engine.connect() as conn:
+                        conn.execute(text("""
+                            INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) 
+                            VALUES (:n, :a, 'Aberta', :g, :d)
+                        """), {"n": n_v, "a": a_v, "g": g_v, "d": d_ab})
+                        conn.commit()
+                    st.success(f"Vaga '{n_v}' criada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Preencha o nome da vaga e o gestor.")
 
+    st.divider()
+
+    # --- LISTA DE GESTÃO DE VAGAS (EDIÇÃO E EXCLUSÃO) ---
+    st.subheader("🔍 Editar Vagas Existentes")
     df_v = carregar_vagas()
-    for _, row in df_v.iterrows():
-        with st.container(border=True):
-            st.write(f"**{row['nome_vaga']}** | {row['area']} | Gestor: {row['gestor']} | Status: {row['status_vaga']}")
+    
+    if df_v.empty:
+        st.info("Nenhuma vaga cadastrada no sistema.")
+    else:
+        for _, row in df_v.iterrows():
+            # Card Expansível para cada vaga
+            with st.expander(f"🏢 {row['nome_vaga'].upper()} | {row['area']} | Status: {row['status_vaga']}"):
+                # Formulário de Edição Interno
+                with st.form(key=f"edit_vaga_{row['id']}"):
+                    c_edit1, c_edit2, c_edit3 = st.columns(3)
+                    
+                    novo_gestor = c_edit1.text_input("Gestor", value=row['gestor'])
+                    
+                    # Mantém a seleção da área correta
+                    areas_lista = ["Comercial", "Operações", "Tecnologia", "RH", "Marketing"]
+                    idx_area = areas_lista.index(row['area']) if row['area'] in areas_lista else 0
+                    nova_area = c_edit2.selectbox("Departamento", areas_lista, index=idx_area)
+                    
+                    # Seleção de Status
+                    status_lista = ["Aberta", "Pausada", "Cancelada", "Finalizada"]
+                    idx_status = status_lista.index(row['status_vaga']) if row['status_vaga'] in status_lista else 0
+                    novo_status = c_edit3.selectbox("Status Atual", status_lista, index=idx_status)
+                    
+                    if st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True):
+                        with engine.connect() as conn:
+                            conn.execute(text("""
+                                UPDATE vagas 
+                                SET gestor = :g, area = :a, status_vaga = :s 
+                                WHERE id = :id
+                            """), {"g": novo_gestor, "a": nova_area, "s": novo_status, "id": row['id']})
+                            conn.commit()
+                        st.success("Vaga atualizada!")
+                        st.rerun()
 
+                # Botão de Exclusão (fora do form de edição para evitar conflitos)
+                col_del_vaga, col_spacer = st.columns([1, 4])
+                if col_del_vaga.button(f"🗑️ EXCLUIR VAGA", key=f"del_v_{row['id']}", type="secondary", use_container_width=True):
+                    with engine.connect() as conn:
+                        conn.execute(text("DELETE FROM vagas WHERE id = :id"), {"id": row['id']})
+                        conn.commit()
+                    st.warning(f"Vaga '{row['nome_vaga']}' removida.")
+                    st.rerun()
 # --- 9. CANDIDATOS (INCLUIR, GESTÃO E EXCLUIR) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
@@ -296,6 +354,7 @@ elif menu == "🚀 ONBOARDING":
                 sets = ", ".join([f"{k}=:{k}" for k in novos_on.keys()])
                 conn.execute(text(f"UPDATE candidatos SET {sets} WHERE id=:id"), {**novos_on, "id": int(c_data["id"])}); conn.commit()
             st.success("Onboarding atualizado!")
+
 
 
 
