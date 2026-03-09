@@ -137,7 +137,7 @@ if menu == "🎓 ESTAGIÁRIOS":
             inst = st.text_input("Instituição de Ensino")
             # Novos campos solicitados:
             funcao = st.text_input("Função / Cargo")
-            time_eq = st.selectbox("Time / Equipe", ["Tecnologia", "Comercial", "Marketing", "Operações", "RH", "Financeiro", "Outros"])
+            time_eq = st.selectbox("Time / Equipe", ["Tecnologia", "Dados", "Retenção", "Monetização", "RH", "Financeiro", "Contabilidade", "SRE", "CRO", "BHAZ", "Evolution", "Outros"])
             
             d_ini = st.date_input("Início do Contrato", value=date.today())
             d_fim = st.date_input("Término do Contrato")
@@ -236,5 +236,6 @@ elif menu == "⚙️ CANDIDATOS":
 
 elif menu == "🚀 ONBOARDING":
     st.info("Módulo de Onboarding ativo.")
+
 
 
