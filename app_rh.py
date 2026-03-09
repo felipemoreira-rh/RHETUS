@@ -51,7 +51,6 @@ def executar_sql(query, params=None):
 # --- 4. INICIALIZAÇÃO DO BANCO ---
 def inicializar_banco():
     with engine.begin() as conn:
-        # 1. Cria as tabelas se não existirem
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS vagas (
                 id SERIAL PRIMARY KEY, 
@@ -64,17 +63,13 @@ def inicializar_banco():
                 solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE
             );
         """))
-        
-        # 2. Tenta adicionar a coluna ID separadamente para não travar se der erro
-        try:
-            conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
-        except Exception:
-            pass # Ignora se a coluna já existir ou se houver erro de restrição
-            
-        try:
-            conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
-        except Exception:
-            pass # Ignora para evitar o erro de parada total
+        # Garante que as colunas existam em tabelas antigas sem quebrar o código
+        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL;"))
+        except: pass
+        try: conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL;"))
+        except: pass
+
+inicializar_banco()
 
 # --- 5. SIDEBAR E NAVEGAÇÃO ---
 with st.sidebar:
@@ -94,7 +89,6 @@ if menu == "📊 INDICADORES":
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
         v_ativas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
         
-        # Cálculo de Aging com segurança
         v_ativas['aging'] = v_ativas['data_abertura'].apply(lambda x: (hoje - x).days if pd.notnull(x) else 0)
         
         c1, c2, c3 = st.columns(3)
@@ -130,20 +124,22 @@ elif menu == "🏢 VAGAS":
                 else: st.warning("O nome da vaga é obrigatório.")
 
     df_v = carregar_vagas()
-    for _, row in df_v.iterrows():
+    for i, row in df_v.iterrows():
+        # CORREÇÃO AQUI: Usa row.get('id') para evitar KeyError se a coluna não existir
+        row_id = row.get('id', i)
         with st.expander(f"🏢 {row['nome_vaga'].upper()} | {row['status_vaga']}"):
             col1, col2 = st.columns([3, 1])
             with col1:
-                with st.form(f"ed_v_{row['id']}"):
+                with st.form(f"ed_v_{row_id}"):
                     eg = st.text_input("Gestor", value=row['gestor'])
                     es = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
                     if st.form_submit_button("SALVAR ALTERAÇÕES"):
-                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE id=:id", {"g": eg, "s": es, "id": row['id']})
+                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE nome_vaga=:n", {"g": eg, "s": es, "n": row['nome_vaga']})
                         st.rerun()
             with col2:
                 st.write("Ações")
-                if st.button("🗑️ EXCLUIR", key=f"del_v_{row['id']}", use_container_width=True):
-                    executar_sql("DELETE FROM vagas WHERE id=:id", {"id": row['id']})
+                if st.button("🗑️ EXCLUIR", key=f"del_v_{row_id}", use_container_width=True):
+                    executar_sql("DELETE FROM vagas WHERE nome_vaga=:n", {"n": row['nome_vaga']})
                     st.rerun()
 
 # --- 8. ABA: CANDIDATOS ---
@@ -172,22 +168,24 @@ elif menu == "⚙️ CANDIDATOS":
             cands_vaga = df_c[df_c['vaga_vinculada'] == v_nome]
             if not cands_vaga.empty:
                 st.subheader(f"📁 {v_nome}")
-                for _, cand in cands_vaga.iterrows():
+                for i, cand in cands_vaga.iterrows():
+                    # CORREÇÃO AQUI: Usa cand.get('id') para evitar KeyError
+                    cand_id = cand.get('id', i)
                     with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
                         etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                         idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
                         
                         c_edit, c_del = st.columns([3, 1])
-                        novo_st = c_edit.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{cand['id']}")
+                        novo_st = c_edit.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{cand_id}")
                         
-                        if c_edit.button("ATUALIZAR STATUS", key=f"up_{cand['id']}"):
+                        if c_edit.button("ATUALIZAR STATUS", key=f"up_{cand_id}"):
                             novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
-                            executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE id=:id", 
-                                         {"s": novo_st, "h": novo_h, "id": cand['id']})
+                            executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n AND vaga_vinculada=:v", 
+                                         {"s": novo_st, "h": novo_h, "n": cand['candidato'], "v": v_nome})
                             st.rerun()
                             
-                        if c_del.button("EXCLUIR", key=f"del_c_{cand['id']}", use_container_width=True):
-                            executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
+                        if c_del.button("EXCLUIR", key=f"del_c_{cand_id}", use_container_width=True):
+                            executar_sql("DELETE FROM candidatos WHERE candidato=:n AND vaga_vinculada=:v", {"n": cand['candidato'], "v": v_nome})
                             st.rerun()
                         
                         st.caption("Histórico")
@@ -204,23 +202,18 @@ elif menu == "🚀 ONBOARDING":
         c_data = df_on[df_on["candidato"] == sel_c].iloc[0]
         
         st.subheader(f"Checklist: {sel_c}")
-        
-        # Sistema de Checklist dinâmico
-        items = {
-            "envio_proposta": "✅ Envio de Proposta",
-            "solic_documentos": "📄 Solicitação de Documentos",
-            "solic_contrato": "✍️ Assinatura de Contrato",
-            "solic_acessos": "🔑 Liberação de Acessos"
-        }
+        items = {"envio_proposta": "✅ Envio de Proposta", "solic_documentos": "📄 Solicitação de Documentos",
+                 "solic_contrato": "✍️ Assinatura de Contrato", "solic_acessos": "🔑 Liberação de Acessos"}
         
         res_on = {}
         cols = st.columns(len(items))
         for i, (key, label) in enumerate(items.items()):
-            res_on[key] = cols[i].checkbox(label, value=bool(c_data[key]), key=f"chk_{c_data['id']}_{key}")
+            # CORREÇÃO AQUI: Usa get() para evitar erro se id não existir
+            c_id_on = c_data.get('id', 0)
+            res_on[key] = cols[i].checkbox(label, value=bool(c_data.get(key, False)), key=f"chk_{c_id_on}_{key}")
             
         if st.button("SALVAR PROGRESSO", use_container_width=True):
             set_query = ", ".join([f"{k}=:{k}" for k in res_on.keys()])
-            executar_sql(f"UPDATE candidatos SET {set_query} WHERE id=:id", {**res_on, "id": c_data["id"]})
+            executar_sql(f"UPDATE candidatos SET {set_query} WHERE candidato=:n", {**res_on, "n": sel_c})
             st.success("Onboarding atualizado!")
             st.rerun()
-
