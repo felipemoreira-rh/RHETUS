@@ -8,7 +8,7 @@ import os
 # --- 1. CONFIGURAÇÃO E ESTILO ---
 # AJUSTE AQUI: Substituí o emoji '🏈' pelo caminho da sua imagem 'logo.png'
 st.set_page_config(
-    page_title="RH ETUS - Gestão Pro", 
+    page_title="RH ETUS", 
     layout="wide", 
     page_icon="logo.png"  # Nome exato do arquivo que você subiu no GitHub
 )
@@ -187,3 +187,4 @@ elif menu == "🚀 ONBOARDING":
             set_query = ", ".join([f"{k}=:{k}" for k in res_on.keys()])
             executar_sql(f"UPDATE candidatos SET {set_query} WHERE candidato=:n", {**res_on, "n": sel_c})
             st.rerun()
+
