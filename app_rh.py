@@ -160,7 +160,7 @@ elif menu == "🚀 ONBOARDING":
             if st.button("Salvar Checklist", key=f"svon{r['id']}"):
                 executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP (ATUALIZADO COM GRÁFICO DE CUMPRIMENTO) ---
+# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E COMPLETO) ---
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
@@ -168,56 +168,59 @@ elif menu == "📊 DASHBOARD DP":
         df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
         hoje = pd.Timestamp(date.today())
         
-        # 1. Indicadores
+        # 1. Cards de Indicadores
         c1, c2, c3 = st.columns(3)
-        c1.metric("🎓 TOTAL", len(df_est))
+        c1.metric("🎓 TOTAL ESTAGIÁRIOS", len(df_est))
         vencendo = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
         c2.metric("⚠️ VENCENDO EM 30 DIAS", vencendo)
-        docs_ok = len(df_est[(df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)])
+        
+        df_est['doc_ok'] = (df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)
+        docs_ok = len(df_est[df_est['doc_ok'] == True])
         c3.metric("✅ DOCS COMPLETOS", docs_ok)
 
         st.divider()
-        st.subheader("📊 % de Cumprimento de Contrato")
 
-        # 2. Cálculo de Progresso e Cores
-        progressos = []
-        cores = []
+        # 2. Gráficos de Visão Geral (Restauração do Dash Original)
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("🏢 Distribuição por Time")
+            st.plotly_chart(px.bar(df_est, x='time_equipe', color='time_equipe', color_discrete_sequence=['#8DF768', '#4CAF50']), use_container_width=True)
+        with g2:
+            st.subheader("📈 Status de Documentação")
+            status_counts = df_est['doc_ok'].map({True: 'Completo', False: 'Pendente'}).value_counts().reset_index()
+            st.plotly_chart(px.pie(status_counts, names='doc_ok', values='count', color='doc_ok', color_discrete_map={'Completo':'#8DF768', 'Pendente':'#FF4B4B'}), use_container_width=True)
+
+        st.divider()
+        
+        # 3. Gráfico de Cumprimento de Contrato (Barras % Progressivas)
+        st.subheader("📊 % de Cumprimento de Contrato")
+        progressos, cores = [], []
         for _, r in df_est.iterrows():
             total_dias = (r['data_fim'] - r['data_inicio']).days
             dias_passados = (hoje - r['data_inicio']).days
-            
-            # Garante limites entre 0 e 100%
             perc = max(0, min(100, (dias_passados / total_dias * 100))) if total_dias > 0 else 0
             progressos.append(round(perc, 1))
-            
-            # Lógica de Cor: Verde (Longe), Laranja (Perto), Vermelho (Vencendo/Vencido)
-            if perc >= 90: cores.append('#FF4B4B') # Vermelho
-            elif perc >= 70: cores.append('#FFA500') # Laranja
-            else: cores.append('#8DF768') # Verde
+            if perc >= 90: cores.append('#FF4B4B') # Vermelho (Vencendo/Vencido)
+            elif perc >= 70: cores.append('#FFA500') # Laranja (Atenção)
+            else: cores.append('#8DF768') # Verde (Em dia)
 
         df_est['progresso'] = progressos
         df_est['cor'] = cores
 
-        # 3. Gráfico de Barras Progressivo
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            y=df_est['estagiario'],
-            x=df_est['progresso'],
-            orientation='h',
-            marker_color=df_est['cor'],
-            text=df_est['progresso'].astype(str) + '%',
-            textposition='auto',
-            hovertemplate="<b>%{y}</b><br>Cumprido: %{x}%<extra></extra>"
+            y=df_est['estagiario'], x=df_est['progresso'], orientation='h',
+            marker_color=df_est['cor'], text=df_est['progresso'].astype(str) + '%',
+            textposition='auto', hovertemplate="<b>%{y}</b><br>Progresso: %{x}%<extra></extra>"
         ))
         fig.update_layout(
             xaxis=dict(title="Porcentagem Concluída", range=[0, 100]),
             yaxis=dict(autorange="reversed"),
-            height=400 + (len(df_est) * 30), # Altura dinâmica baseada no número de estagiários
-            margin=dict(l=0, r=0, t=30, b=0)
+            height=300 + (len(df_est) * 35), margin=dict(l=0, r=0, t=30, b=0)
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    else: st.info("Sem dados de estagiários.")
+    else: st.info("Sem dados de estagiários para exibir o Dashboard.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
