@@ -136,7 +136,6 @@ elif menu == "⚙️ CANDIDATOS":
                         if uploaded_cv:
                             bytes_data = uploaded_cv.getvalue()
                             if st.button("💾 Salvar Arquivo PDF", key=f"save{cr['id']}"):
-                                # Salva o binário do PDF no banco de dados (campo arquivo_cv)
                                 try:
                                     with engine.begin() as conn:
                                         conn.execute(text("UPDATE candidatos SET arquivo_cv=:data WHERE id=:id"), {"data": bytes_data, "id": cr['id']})
@@ -145,7 +144,6 @@ elif menu == "⚙️ CANDIDATOS":
                                 except Exception as e:
                                     st.error(f"Erro ao salvar: {e}")
 
-                        # Se já existir um arquivo no banco, permite baixar
                         if cr.get('arquivo_cv') is not None:
                             st.download_button(
                                 label="📥 Baixar Currículo Atual",
@@ -174,20 +172,57 @@ elif menu == "🚀 ONBOARDING":
                 if st.button("Salvar Checklist", key=f"svon{r['id']}"):
                     executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP ---
+# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E ATUALIZADO) ---
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
+        # Conversão e Cálculos
         df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
         hoje = pd.Timestamp(date.today())
-        df_est['doc_ok'] = (df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🎓 TOTAL", len(df_est))
-        alerta = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
-        c2.metric("⚠️ VENCENDO (30 DIAS)", alerta)
-        c3.metric("✅ DOCS OK", len(df_est[df_est['doc_ok'] == True]))
+        
+        # Lógica de Documentação Completa (Checa se todos os 4 pilares estão True)
+        df_est['doc_ok'] = (
+            (df_est['solic_contrato_dp'] == True) & 
+            (df_est['assina_etus'] == True) & 
+            (df_est['assina_faculdade'] == True) & 
+            (df_est['envio_juridico'] == True)
+        )
+
+        # Indicadores Principais
+        c1, c2, c3, c4 = st.columns(4)
+        total_est = len(df_est)
+        c1.metric("🎓 TOTAL ESTAGIÁRIOS", total_est)
+        
+        # Alerta de Vencimento em 30 dias
+        vencendo = df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)]
+        c2.metric("⚠️ VENCENDO (30 DIAS)", len(vencendo), delta_color="inverse")
+        
+        # Documentação OK vs Pendente
+        docs_ok = len(df_est[df_est['doc_ok'] == True])
+        c3.metric("✅ DOCS COMPLETOS", docs_ok)
+        c4.metric("🚨 PENDÊNCIAS", total_est - docs_ok)
+
         st.divider()
-        st.dataframe(df_est[['estagiario', 'instituicao', 'funcao', 'data_fim', 'doc_ok']], use_container_width=True)
+
+        # Visualização Gráfica
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("🏢 Distribuição por Time")
+            st.plotly_chart(px.bar(df_est, x='time_equipe', color='time_equipe', color_discrete_sequence=['#8DF768', '#4CAF50']), use_container_width=True)
+        with g2:
+            st.subheader("📈 Status de Documentação")
+            status_counts = df_est['doc_ok'].map({True: 'Completo', False: 'Pendente'}).value_counts().reset_index()
+            st.plotly_chart(px.pie(status_counts, names='doc_ok', values='count', color='doc_ok', color_discrete_map={'Completo':'#8DF768', 'Pendente':'#FF4B4B'}), use_container_width=True)
+
+        st.subheader("📋 Listagem Consolidada de Estagiários")
+        # Estilização da Tabela
+        df_display = df_est[['estagiario', 'time_equipe', 'data_fim', 'doc_ok']].copy()
+        df_display['data_fim'] = df_display['data_fim'].dt.strftime('%d/%m/%Y')
+        df_display['doc_ok'] = df_display['doc_ok'].map({True: '✅ OK', False: '❌ PENDENTE'})
+        st.table(df_display)
+
+    else:
+        st.info("Nenhum contrato de estagiário cadastrado para exibir no Dashboard.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
