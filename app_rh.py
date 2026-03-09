@@ -56,13 +56,10 @@ def inicializar_banco():
         """))
 inicializar_banco()
 
-# --- 5. SIDEBAR COM MENUS SEPARADOS (RH E DP) ---
+# --- 5. SIDEBAR ATUALIZADA ---
 with st.sidebar:
     if os.path.exists("logo.png"):
         st.image("logo.png", use_container_width=True)
-    else:
-        st.markdown("## 🏢 RH ETUS")
-    
     st.divider()
     area_selecionada = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal"])
     st.divider()
@@ -72,10 +69,67 @@ with st.sidebar:
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
     else:
         st.subheader("MENU DP")
-        menu = st.radio("NAVEGAÇÃO", ["🎓 ESTAGIÁRIOS", "📄 DOCUMENTOS"])
+        # Adicionada a opção de Dashboard DP
+        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "📄 DOCUMENTOS"])
 
-st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
+# --- 6. NOVA ABA: DASHBOARD DP ---
+if menu == "📊 DASHBOARD DP":
+    df_est = carregar_dados("contratos_estagio")
+    
+    if not df_est.empty:
+        df_est['data_fim'] = pd.to_datetime(df_est['data_fim']).dt.date
+        hoje = date.today()
+        
+        # Cálculos de Indicadores
+        total = len(df_est)
+        vencidos = len(df_est[df_est['data_fim'] < hoje])
+        alerta = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("🎓 TOTAL ESTAGIÁRIOS", total)
+        c2.metric("⚠️ VENCENDO (30 DIAS)", alerta, delta_color="inverse")
+        c3.metric("🚨 CONTRATOS VENCIDOS", vencidos, delta_color="inverse")
+        
+        st.divider()
+        
+        col_graf, col_lista = st.columns([1, 1])
+        
+        with col_graf:
+            st.subheader("📑 Status da Documentação")
+            # Somando os True nos campos de checklist
+            etapas = {
+                "Solicitação": df_est["solic_contrato_dp"].sum(),
+                "Assin. ETUS": df_est["assina_etus"].sum(),
+                "Assin. Faculdade": df_est["assina_faculdade"].sum(),
+                "Jurídico": df_est["envio_juridico"].sum()
+            }
+            df_etapas = pd.DataFrame(list(etapas.items()), columns=['Etapa', 'Concluídos'])
+            fig_etapas = px.bar(df_etapas, x='Etapa', y='Concluídos', color='Concluídos', 
+                               color_continuous_scale='Viridis', text_auto=True)
+            fig_etapas.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_etapas, use_container_width=True)
+            
+        with col_lista:
+            st.subheader("⏳ Timeline de Vencimentos")
+            # Tabela visual simplificada
+            for _, row in df_est.sort_values(by='data_fim').iterrows():
+                d_ini = pd.to_datetime(row['data_inicio']).date()
+                d_fim = row['data_fim']
+                
+                total_d = (d_fim - d_ini).days
+                passado = (hoje - d_ini).days
+                progresso = max(0, min(100, int((passado / total_d) * 100))) if total_d > 0 else 0
+                
+                cor_prog = "green" if progresso < 80 else "orange" if progresso < 100 else "red"
+                
+                st.write(f"**{row['estagiario']}** ({row['time_equipe']})")
+                st.progress(progresso / 100)
+                st.caption(f"Vence em: {d_fim.strftime('%d/%m/%Y')} | {progresso}% concluído")
+                st.write("")
+    else:
+        st.info("Ainda não há dados de estagiários para exibir no Dashboard.")
 
+# --- MANTÉM AS DEMAIS ABAS (ESTAGIÁRIOS, VAGAS, ETC) ---
 # --- 6. LÓGICA DAS ABAS ---
 
 # --- MÓDULO RH: INDICADORES (RESTAURADO) ---
@@ -243,6 +297,7 @@ elif menu == "⚙️ CANDIDATOS":
 
 elif menu == "🚀 ONBOARDING":
     st.info("Módulo de Onboarding ativo.")
+
 
 
 
