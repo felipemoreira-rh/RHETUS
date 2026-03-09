@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from sqlalchemy import create_engine, text
 from datetime import datetime
+import os
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="🏈")
@@ -11,13 +12,12 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
     html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
-    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; display: flex; align-items: center; }
-    .logo-img { margin-right: 20px; }
+    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
     .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MOTOR DE BANCO DE DADOS (SINGLETON) ---
+# --- 2. MOTOR DE BANCO DE DADOS ---
 @st.cache_resource
 def get_engine():
     try:
@@ -29,7 +29,7 @@ def get_engine():
 
 engine = get_engine()
 
-# --- 3. FUNÇÕES DE DADOS (COM CACHE) ---
+# --- 3. FUNÇÕES DE DADOS ---
 @st.cache_data(ttl=300)
 def carregar_vagas():
     return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
@@ -70,20 +70,24 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 5. SIDEBAR E NAVEGAÇÃO ---
+# --- 5. SIDEBAR E NAVEGAÇÃO COM LOGO DO GITHUB ---
 with st.sidebar:
-    # --- INSIRA O CAMINHO DA SUA LOGO AQUI ---
-    # st.image("caminho/para/sua/logo.png", width=150) 
-    st.title("🏈 RH ETUS")
+    # Tenta carregar a logo do arquivo que você subiu
+    # Ajuste o nome 'logo.png' para o nome exato do arquivo que você subiu
+    caminho_logo = "logo.png" 
+    
+    if os.path.exists(caminho_logo):
+        st.image(caminho_logo, width=180)
+    else:
+        st.markdown("## 🏈 RH ETUS") # Fallback caso o nome do arquivo mude
+        
     st.divider()
-    menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
+    menu = st.radio(
+        "NAVEGAÇÃO", 
+        ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"]
+    )
 
-# --- HEADER COM LOGO ---
-col_logo, col_titulo = st.columns([1, 5])
-with col_titulo:
-    st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
-# with col_logo:
-#     st.image("caminho/para/sua/logo.png", width=80)
+st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
 # --- 6. ABA: INDICADORES ---
 if menu == "📊 INDICADORES":
@@ -153,13 +157,13 @@ elif menu == "⚙️ CANDIDATOS":
 
     if not df_c.empty:
         for i, cand in df_c.iterrows():
-            cand_id = cand.get('id', i)
+            c_id = cand.get('id', i)
             with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
                 etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
-                novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{cand_id}")
+                novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
                 
-                if st.button("ATUALIZAR STATUS", key=f"up_{cand_id}"):
+                if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
                     novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
                     executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", {"s": novo_st, "h": novo_h, "n": cand['candidato']})
                     st.rerun()
