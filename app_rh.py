@@ -63,6 +63,9 @@ def inicializar_banco():
                 solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE
             );
         """))
+        # Bloco de correção para tabelas pré-existentes sem a coluna ID
+        conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
+        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
 
 inicializar_banco()
 
