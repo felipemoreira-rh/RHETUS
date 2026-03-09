@@ -6,7 +6,12 @@ from datetime import datetime
 import os
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
-st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="🏈")
+# AJUSTE AQUI: Substituí o emoji '🏈' pelo caminho da sua imagem 'logo.png'
+st.set_page_config(
+    page_title="RH ETUS - Gestão Pro", 
+    layout="wide", 
+    page_icon="logo.png"  # Nome exato do arquivo que você subiu no GitHub
+)
 
 st.markdown("""
     <style>
@@ -70,16 +75,15 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- 5. SIDEBAR E NAVEGAÇÃO COM LOGO DO GITHUB ---
+# --- 5. SIDEBAR E NAVEGAÇÃO ---
 with st.sidebar:
-    # Tenta carregar a logo do arquivo que você subiu
-    # Ajuste o nome 'logo.png' para o nome exato do arquivo que você subiu
+    # AJUSTE AQUI: Nome do arquivo da logo
     caminho_logo = "logo.png" 
     
     if os.path.exists(caminho_logo):
-        st.image(caminho_logo, width=180)
+        st.image(caminho_logo, use_container_width=True)
     else:
-        st.markdown("## 🏈 RH ETUS") # Fallback caso o nome do arquivo mude
+        st.markdown("## 🏢 RH ETUS")
         
     st.divider()
     menu = st.radio(
