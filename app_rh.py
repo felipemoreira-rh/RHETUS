@@ -25,7 +25,7 @@ st.markdown("""
 model_ai = None
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model_ai = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model_ai = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # --- 3. MOTOR DE BANCO DE DADOS ---
 @st.cache_resource
@@ -268,3 +268,4 @@ elif menu == "🎓 ESTAGIÁRIOS":
                         executar_sql("UPDATE contratos_estagio SET solic_contrato_dp=:s, assina_etus=:ae, assina_faculdade=:af, envio_juridico=:ej WHERE id=:id", {"s":s,"ae":ae,"af":af,"ej":ej,"id":r['id']}); st.rerun()
                     if st.button("🗑️ Excluir", key=f"dl{r['id']}"):
                         executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
+
