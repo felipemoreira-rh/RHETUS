@@ -18,6 +18,7 @@ st.markdown("""
     html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
     .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
     .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
+    .vaga-header { background-color: #151514; color: #8DF768; padding: 10px; border-radius: 5px; margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -73,13 +74,10 @@ def inicializar_banco():
         except: pass
         try: conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS motivo_perda TEXT;"))
         except: pass
-        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL;"))
-        except: pass
 
 inicializar_banco()
 
-# --- 5. SIDEBAR (DEFINIÇÃO DO MENU) ---
-# Movido para cima para evitar o NameError
+# --- 5. SIDEBAR ---
 with st.sidebar:
     caminho_logo = "logo.png" 
     if os.path.exists(caminho_logo):
@@ -122,6 +120,10 @@ if menu == "📊 INDICADORES":
         
         with col_left:
             st.subheader("📊 Conversão por Etapa")
+            
+
+[Image of a recruitment funnel diagram]
+
             if not df_c.empty:
                 ordem_etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 contagem_etapas = df_c['status_geral'].value_counts().reindex(ordem_etapas).fillna(0).reset_index()
@@ -170,10 +172,11 @@ elif menu == "🏢 VAGAS":
                     executar_sql("DELETE FROM vagas WHERE nome_vaga=:n", {"n": row['nome_vaga']})
                     st.rerun()
 
-# --- 8. ABA: CANDIDATOS ---
+# --- 8. ABA: CANDIDATOS (SEPARAÇÃO POR VAGA RESTAURADA) ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     df_c = carregar_candidatos()
+
     with st.expander("➕ ADICIONAR NOVO CANDIDATO"):
         if not df_vagas.empty:
             with st.form("add_c", clear_on_submit=True):
@@ -186,28 +189,40 @@ elif menu == "⚙️ CANDIDATOS":
                                      {"n": cn, "v": cv, "h": h})
                         st.rerun()
 
-    if not df_c.empty:
-        for i, cand in df_c.iterrows():
-            c_id = cand.get('id', i)
-            with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
-                etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
-                idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
-                c_edit, c_del = st.columns([3, 1])
-                with c_edit:
-                    novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
-                    if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
-                        novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
-                        executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", 
-                                     {"s": novo_st, "h": novo_h, "n": cand['candidato']})
-                        st.rerun()
-                with c_del:
-                    st.write("---")
-                    motivo = st.selectbox("Motivo da Saída", ["-", "Pretensão Salarial", "Falta de Fit Cultural", "Desistência", "Reprovado Técnico", "Outros"], key=f"mot_{c_id}")
-                    if st.button("❌ REGISTRAR PERDA", key=f"perda_{c_id}"):
-                        if motivo != "-":
-                            executar_sql("UPDATE candidatos SET motivo_perda=:m, status_geral='Perda' WHERE candidato=:n", {"m": motivo, "n": cand['candidato']})
-                            st.rerun()
-                        else: st.warning("Selecione um motivo.")
+    if not df_vagas.empty:
+        # Loop para separar candidatos por cada vaga cadastrada
+        for _, vaga_row in df_vagas.iterrows():
+            vaga_nome = vaga_row['nome_vaga']
+            cands_da_vaga = df_c[df_c['vaga_vinculada'] == vaga_nome]
+            
+            # Só mostra o título da vaga se houver candidatos ou se a vaga estiver aberta
+            if not cands_da_vaga.empty:
+                st.markdown(f'<div class="vaga-header">🏢 VAGA: {vaga_nome.upper()}</div>', unsafe_allow_html=True)
+                
+                for i, cand in cands_da_vaga.iterrows():
+                    c_id = cand.get('id', i)
+                    with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
+                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
+                        idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
+                        
+                        c_edit, c_del = st.columns([3, 1])
+                        with c_edit:
+                            novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
+                            if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
+                                novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
+                                executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", 
+                                             {"s": novo_st, "h": novo_h, "n": cand['candidato']})
+                                st.rerun()
+                        with c_del:
+                            st.write("---")
+                            motivo = st.selectbox("Motivo da Saída", ["-", "Pretensão Salarial", "Falta de Fit Cultural", "Desistência", "Reprovado Técnico", "Outros"], key=f"mot_{c_id}")
+                            if st.button("❌ REGISTRAR PERDA", key=f"perda_{c_id}"):
+                                if motivo != "-":
+                                    executar_sql("UPDATE candidatos SET motivo_perda=:m, status_geral='Perda' WHERE candidato=:n", {"m": motivo, "n": cand['candidato']})
+                                    st.rerun()
+                                else: st.warning("Selecione um motivo.")
+    else:
+        st.info("Cadastre uma vaga primeiro para gerenciar candidatos.")
 
 # --- 9. ABA: ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
