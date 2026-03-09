@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
 
-# --- 1. CONFIGURAÇÃO E ESTILO ---
+# --- 1. CONFIGURAÇÃO E ESTILO (CORRIGIDO PARA TEMAS CLARO/ESCURO) ---
 st.set_page_config(
     page_title="RH ETUS - Gestão Pro", 
     layout="wide", 
@@ -15,10 +15,38 @@ st.set_page_config(
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
-    html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
-    .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #151514; padding-left: 15px; }
-    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
-    .vaga-header { background-color: #151514; color: #8DF768; padding: 10px; border-radius: 5px; margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
+    
+    /* Fonte Global */
+    html, body, [class*="css"], [data-testid="stSidebar"] { 
+        font-family: 'Space Grotesk', sans-serif !important; 
+    }
+    
+    /* Cabeçalho Principal Adaptável */
+    .header-rh { 
+        font-size: 42px; 
+        font-weight: 700; 
+        color: #8DF768; /* Mantemos o verde ETUS que funciona em ambos */
+        margin-bottom: 30px; 
+        border-left: 10px solid #8DF768; 
+        padding-left: 15px; 
+    }
+    
+    /* Ajuste nos Cards de Métricas para visibilidade */
+    [data-testid="stMetricValue"] {
+        font-size: 28px !important;
+    }
+    
+    /* Estilo dos cabeçalhos de vaga na aba Candidatos */
+    .vaga-header { 
+        background-color: rgba(141, 247, 104, 0.2); 
+        color: inherit; /* Segue a cor do texto do tema atual */
+        padding: 10px; 
+        border-radius: 5px; 
+        margin-top: 20px; 
+        margin-bottom: 10px; 
+        font-weight: bold;
+        border-left: 5px solid #8DF768;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -70,10 +98,6 @@ def inicializar_banco():
                 solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE
             );
         """))
-        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS data_fechamento DATE;"))
-        except: pass
-        try: conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS motivo_perda TEXT;"))
-        except: pass
 
 inicializar_banco()
 
@@ -108,6 +132,7 @@ if menu == "📊 INDICADORES":
         else:
             avg_tth = 0
 
+        # Métricas em colunas (O Streamlit cuidará das cores do texto automaticamente agora)
         c1, c2, c3 = st.columns(3)
         c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
         c2.metric("⏱️ TIME-TO-HIRE MÉDIO", f"{avg_tth} dias")
@@ -125,16 +150,18 @@ if menu == "📊 INDICADORES":
                 contagem_etapas = df_c['status_geral'].value_counts().reindex(ordem_etapas).fillna(0).reset_index()
                 contagem_etapas.columns = ['Etapa', 'Candidatos']
                 fig_funil = px.funnel(contagem_etapas, x='Candidatos', y='Etapa', color_discrete_sequence=['#8DF768'])
+                fig_funil.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_funil, use_container_width=True)
 
         with col_right:
-            st.subheader("❌ Motivos de Desistência/Perda")
+            st.subheader("❌ Motivos de Perda")
             if not df_c.empty and df_c['motivo_perda'].notnull().any():
                 df_perda = df_c[df_c['motivo_perda'].notnull()]
                 fig_perda = px.pie(df_perda, names='motivo_perda', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_perda.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_perda, use_container_width=True)
             else:
-                st.info("Ainda não há dados de motivos de perda registrados.")
+                st.info("Sem dados de perda registrados.")
 
 # --- 7. ABA: VAGAS ---
 elif menu == "🏢 VAGAS":
@@ -151,21 +178,20 @@ elif menu == "🏢 VAGAS":
 
     df_v = carregar_vagas()
     for i, row in df_v.iterrows():
-        row_id = row.get('id', i)
         with st.expander(f"🏢 {row['nome_vaga'].upper()} | {row['status_vaga']}"):
             col1, col2 = st.columns([3, 1])
             with col1:
-                with st.form(f"ed_v_{row_id}"):
+                with st.form(f"ed_v_{row['id']}"):
                     eg = st.text_input("Gestor", value=row['gestor'])
                     es = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
                     if st.form_submit_button("SALVAR ALTERAÇÕES"):
                         data_f = datetime.now().date() if es == "Finalizada" else None
-                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s, data_fechamento=:df WHERE nome_vaga=:n", 
-                                     {"g": eg, "s": es, "df": data_f, "n": row['nome_vaga']})
+                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s, data_fechamento=:df WHERE id=:id", 
+                                     {"g": eg, "s": es, "df": data_f, "id": row['id']})
                         st.rerun()
             with col2:
-                if st.button("🗑️ EXCLUIR", key=f"del_v_{row_id}", use_container_width=True):
-                    executar_sql("DELETE FROM vagas WHERE nome_vaga=:n", {"n": row['nome_vaga']})
+                if st.button("🗑️ EXCLUIR", key=f"del_v_{row['id']}", use_container_width=True):
+                    executar_sql("DELETE FROM vagas WHERE id=:id", {"id": row['id']})
                     st.rerun()
 
 # --- 8. ABA: CANDIDATOS ---
@@ -194,25 +220,24 @@ elif menu == "⚙️ CANDIDATOS":
                 st.markdown(f'<div class="vaga-header">🏢 VAGA: {vaga_nome.upper()}</div>', unsafe_allow_html=True)
                 
                 for i, cand in cands_da_vaga.iterrows():
-                    c_id = cand.get('id', i)
                     with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
                         etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                         idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
                         
                         c_edit, c_del = st.columns([3, 1])
                         with c_edit:
-                            novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
-                            if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
+                            novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{cand['id']}")
+                            if st.button("ATUALIZAR STATUS", key=f"up_{cand['id']}"):
                                 novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
-                                executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", 
-                                             {"s": novo_st, "h": novo_h, "n": cand['candidato']})
+                                executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE id=:id", 
+                                             {"s": novo_st, "h": novo_h, "id": cand['id']})
                                 st.rerun()
                         with c_del:
                             st.write("---")
-                            motivo = st.selectbox("Motivo da Saída", ["-", "Pretensão Salarial", "Falta de Fit Cultural", "Desistência", "Reprovado Técnico", "Outros"], key=f"mot_{c_id}")
-                            if st.button("❌ REGISTRAR PERDA", key=f"perda_{c_id}"):
+                            motivo = st.selectbox("Motivo da Saída", ["-", "Pretensão Salarial", "Falta de Fit Cultural", "Desistência", "Reprovado Técnico", "Outros"], key=f"mot_{cand['id']}")
+                            if st.button("❌ REGISTRAR PERDA", key=f"perda_{cand['id']}"):
                                 if motivo != "-":
-                                    executar_sql("UPDATE candidatos SET motivo_perda=:m, status_geral='Perda' WHERE candidato=:n", {"m": motivo, "n": cand['candidato']})
+                                    executar_sql("UPDATE candidatos SET motivo_perda=:m, status_geral='Perda' WHERE id=:id", {"m": motivo, "id": cand['id']})
                                     st.rerun()
                                 else: st.warning("Selecione um motivo.")
     else:
@@ -231,5 +256,5 @@ elif menu == "🚀 ONBOARDING":
             res_on[key] = cols[i].checkbox(label, value=bool(c_data.get(key, False)), key=f"chk_{sel_c}_{key}")
         if st.button("SALVAR PROGRESSO"):
             set_query = ", ".join([f"{k}=:{k}" for k in res_on.keys()])
-            executar_sql(f"UPDATE candidatos SET {set_query} WHERE candidato=:n", {**res_on, "n": sel_c})
+            executar_sql(f"UPDATE candidatos SET {set_query} WHERE id=:id", {**res_on, "id": c_data['id']})
             st.rerun()
