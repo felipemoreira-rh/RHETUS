@@ -21,10 +21,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 2. CONFIGURAÇÃO IA (GEMINI) ---
+model_ai = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model_ai = genai.GenerativeModel('gemini-1.5-flash')
+        # Usando a versão mais estável para evitar o erro NotFound
+        model_ai = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"Erro na configuração da IA: {e}")
 
@@ -63,17 +65,14 @@ def extrair_texto_pdf(file):
     return texto
 
 def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, s_atual, s_pret):
+    if not model_ai:
+        return "IA não configurada corretamente nos Secrets."
+    
     prompt_completo = f"""
-    Use o modelo abaixo para gerar o parecer técnico de candidatos para vagas de ANALISTA.
-    A resposta deve seguir exatamente a estrutura, linguagem e título indicados.
-
-    PROMPT
-    Quero que você gere um parecer técnico para uma vaga de analista seguindo exatamente as instruções abaixo:
-
-    O título deve ser:
     PARECER RH — {nome_cand} — {nome_vaga} — Analista Responsável: Felipe da Silva Moreira Cristo
-    A linguagem deve ser formal, objetiva e profissional, sem emojis.
-    A estrutura do parecer deve seguir os SEIS tópicos abaixo, sempre nesta ordem. Não alterar títulos nem criar novos tópicos:
+    Linguagem formal, objetiva e profissional, sem emojis.
+    
+    ESTRUTURA OBRIGATÓRIA:
     1. Perfil Acadêmico e Formação
     2. Experiência e Histórico Profissional
     3. Salário Atual
@@ -81,17 +80,16 @@ def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, s_atual, s_pret):
     5. Soft Skills e Interesses Pessoais
     6. Adequação à Vaga e Potencial de Desenvolvimento
 
-    O texto deve ser escrito em formato de parágrafos curtos, com clareza e objetividade.
-    Não invente informações. Use apenas os dados fornecidos.
-    Se faltar algum dado, registre como "Informação não fornecida".
-
     DADOS DO CANDIDATO:
     Salário Atual: {s_atual if s_atual else "Informação não fornecida"}
     Pretensão Salarial: {s_pret if s_pret else "Informação não fornecida"}
     Conteúdo do Currículo: {texto_cv}
     """
-    response = model_ai.generate_content(prompt_completo)
-    return response.text
+    try:
+        response = model_ai.generate_content(prompt_completo)
+        return response.text
+    except Exception as e:
+        return f"Erro ao processar IA: {str(e)}"
 
 def gerar_pdf_parecer(texto_parecer):
     pdf = FPDF()
@@ -127,7 +125,6 @@ with st.sidebar:
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
 # --- 7. MÓDULO RH ---
-
 if menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     if not df_v.empty:
@@ -176,7 +173,7 @@ elif menu == "⚙️ CANDIDATOS":
                 with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
                     c_et, c_ia = st.columns(2)
                     with c_et:
-                        ns = st.selectbox("Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"s{cr['id']}")
+                        ns = st.selectbox("Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"s{cr['id']}", index=["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"].index(cr['status_geral']))
                         mp = st.text_input("Motivo Perda", key=f"m{cr['id']}") if ns == "Perda" else None
                         if st.button("Salvar Etapa", key=f"b{cr['id']}"):
                             executar_sql("UPDATE candidatos SET status_geral=:s, motivo_perda=:m WHERE id=:id", {"s":ns,"m":mp,"id":cr['id']}); st.rerun()
@@ -185,11 +182,13 @@ elif menu == "⚙️ CANDIDATOS":
                         cv = st.file_uploader("PDF CV", type="pdf", key=f"p{cr['id']}")
                         sa = st.text_input("Salário Atual", key=f"sa{cr['id']}")
                         sp = st.text_input("Pretensão", key=f"sp{cr['id']}")
-                        if cv and st.button("Gerar Parecer", key=f"gi{cr['id']}"):
-                            txt_cv = extrair_texto_pdf(cv)
-                            pi = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], txt_cv, sa, sp)
-                            executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p":pi,"id":cr['id']}); st.rerun()
+                        if cv and st.button("✨ Gerar Parecer", key=f"gi{cr['id']}"):
+                            with st.spinner("Analisando..."):
+                                txt_cv = extrair_texto_pdf(cv)
+                                pi = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], txt_cv, sa, sp)
+                                executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p":pi,"id":cr['id']}); st.rerun()
                     if cr.get('parecer_ia'):
+                        st.divider()
                         st.info(cr['parecer_ia'])
                         pdf = gerar_pdf_parecer(cr['parecer_ia'])
                         st.download_button("📥 Baixar PDF", pdf, f"Parecer_{cr['candidato']}.pdf", "application/pdf", key=f"dl{cr['id']}")
@@ -209,7 +208,6 @@ elif menu == "🚀 ONBOARDING":
             executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":c_data['id']}); st.rerun()
 
 # --- 8. MÓDULO DP ---
-
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
@@ -217,30 +215,24 @@ elif menu == "📊 DASHBOARD DP":
         df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
         hoje = pd.Timestamp(date.today())
         df_est['doc_concluida'] = (df_est['solic_contrato_dp'] == True) & (df_est['assina_etus'] == True) & (df_est['assina_faculdade'] == True) & (df_est['envio_juridico'] == True)
-        
         c1, c2, c3 = st.columns(3)
         c1.metric("🎓 TOTAL", len(df_est))
-        # Alerta 30 dias
         alerta = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
         c2.metric("⚠️ VENCENDO (30 DIAS)", alerta)
         c3.metric("✅ CONCLUÍDOS", len(df_est[df_est['doc_concluida'] == True]))
-
         st.divider(); col_l, col_r = st.columns(2)
         with col_l:
-            st.subheader("🚨 Pendências de Documentação")
-            pend = df_est[df_est['doc_concluida'] == False]
-            for _, r in pend.iterrows():
+            st.subheader("🚨 Pendências")
+            for _, r in df_est[df_est['doc_concluida'] == False].iterrows():
                 f = [k for k,v in {'Solic.':r['solic_contrato_dp'],'ETUS':r['assina_etus'],'Facul.':r['assina_faculdade'],'Jurid.':r['envio_juridico']}.items() if not v]
                 st.warning(f"**{r['estagiario']}** | Falta: {', '.join(f)}")
         with col_r:
-            st.subheader("📅 Timeline (Concluídos)")
-            conc = df_est[df_est['doc_concluida'] == True]
-            for _, r in conc.iterrows():
+            st.subheader("📅 Timeline")
+            for _, r in df_est[df_est['doc_concluida'] == True].iterrows():
                 total = (r['data_fim'] - r['data_inicio']).days
-                passado = (hoje - r['data_inicio']).days
-                prog = max(0, min(100, int((passado/total)*100))) if total > 0 else 0
+                prog = max(0, min(100, int(((hoje - r['data_inicio']).days/total)*100))) if total > 0 else 0
                 st.write(f"**{r['estagiario']}**")
-                st.progress(prog/100); st.caption(f"Término: {r['data_fim'].strftime('%d/%m/%Y')}")
+                st.progress(prog/100); st.caption(f"Fim em: {r['data_fim'].strftime('%d/%m/%Y')}")
 
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
@@ -259,7 +251,6 @@ elif menu == "🎓 ESTAGIÁRIOS":
         for _, r in df_e.iterrows():
             is_ok = all([r.get('solic_contrato_dp'), r.get('assina_etus'), r.get('assina_faculdade'), r.get('envio_juridico')])
             with st.expander(f"👤 {r['estagiario']} {'✅' if is_ok else '⏳'}"):
-                st.write(f"**{r.get('funcao')}** | {r.get('time_equipe')}")
                 ca, cb, cc, cd = st.columns(4)
                 s = ca.checkbox("Solicit.", value=bool(r.get('solic_contrato_dp')), key=f"s{r['id']}")
                 ae = cb.checkbox("ETUS", value=bool(r.get('assina_etus')), key=f"ae{r['id']}")
