@@ -5,3 +5,4 @@ sqlalchemy
 psycopg2-binary
 google-generativeai
 pypdf
+fpdf2
