@@ -26,10 +26,9 @@ def configurar_ia():
     if "GEMINI_API_KEY" in st.secrets:
         try:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            # Tentamos o Flash primeiro sem o prefixo 'models/'
+            # Usando o ID estável para evitar o erro 404
             return genai.GenerativeModel('gemini-1.5-flash')
-        except Exception:
-            # Fallback para o Pro caso o Flash dê erro de versão
+        except:
             return genai.GenerativeModel('gemini-pro')
     return None
 
@@ -41,8 +40,8 @@ def get_engine():
     try:
         DB_URL = st.secrets["postgres"]["url"]
         return create_engine(DB_URL, pool_size=5, max_overflow=10, connect_args={"sslmode": "require"})
-    except:
-        st.error("Erro na conexão com o banco de dados."); st.stop()
+    except Exception as e:
+        st.error(f"Erro de conexão: {e}"); st.stop()
 
 engine = get_engine()
 
@@ -70,25 +69,18 @@ def extrair_texto_pdf(file):
     return texto
 
 def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, s_atual, s_pret):
-    if not model_ai: return "IA não configurada nos Secrets."
-    
+    if not model_ai: return "IA não configurada."
     prompt = f"""
-    Como Especialista em Recrutamento, gere um parecer técnico para o candidato {nome_cand} (Vaga: {nome_vaga}).
-    Analista Responsável: Felipe da Silva Moreira Cristo.
-    Estrutura obrigatória: 
-    1. Formação e Acadêmico. 
-    2. Resumo da Experiência. 
-    3. Análise Salarial (Atual: {s_atual} / Pretensão: {s_pret}). 
-    4. Soft Skills. 
-    5. Adequação à Vaga. 
-    6. Veredito Final.
-    Currículo: {texto_cv}
+    Gere um parecer técnico para {nome_cand} na vaga {nome_vaga}. 
+    Analista: Felipe da Silva Moreira Cristo.
+    Tópicos: Formação, Experiência, Salário (Atual: {s_atual}/Pretensão: {s_pret}), Soft Skills e Adequação.
+    CV: {texto_cv}
     """
     try:
         response = model_ai.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Erro na geração: {str(e)}"
+        return f"Erro na IA: {str(e)}"
 
 def gerar_pdf_parecer(texto_parecer):
     pdf = FPDF()
@@ -99,9 +91,10 @@ def gerar_pdf_parecer(texto_parecer):
     pdf.set_font("Arial", "", 11)
     txt = texto_parecer.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 7, txt)
-    return pdf.output()
+    # Correção do download: Retornando bytes diretamente
+    return pdf.output(dest='S').encode('latin-1')
 
-# --- 5. INICIALIZAÇÃO DO BANCO ---
+# --- 5. INICIALIZAÇÃO E ATUALIZAÇÃO DO BANCO ---
 with engine.begin() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);
@@ -126,17 +119,47 @@ with st.sidebar:
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
-# --- 7. MÓDULO RH: CANDIDATOS ---
-if menu == "⚙️ CANDIDATOS":
+# --- 7. MÓDULOS DE RECRUTAMENTO ---
+if menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
-    
+    if not df_v.empty:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
+        if not df_c.empty:
+            st.divider(); col_l, col_r = st.columns(2)
+            with col_l:
+                st.subheader("📊 Funil de Recrutamento")
+                ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
+                cnt = df_c['status_geral'].value_counts().reindex(ordem).fillna(0).reset_index()
+                st.plotly_chart(px.funnel(cnt, x='count', y='status_geral', color_discrete_sequence=['#8DF768']), use_container_width=True)
+            with col_r:
+                st.subheader("❌ Motivos de Perda")
+                if 'motivo_perda' in df_c and df_c['motivo_perda'].notnull().any():
+                    st.plotly_chart(px.pie(df_c[df_c['motivo_perda'].notnull()], names='motivo_perda', hole=0.4), use_container_width=True)
+
+elif menu == "🏢 VAGAS":
+    with st.expander("➕ CADASTRAR NOVA VAGA"):
+        with st.form("nv"):
+            nv = st.text_input("Vaga"); gv = st.text_input("Gestor"); av = st.selectbox("Área", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
+            if st.form_submit_button("CRIAR"):
+                executar_sql("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)", {"n":nv,"a":av,"g":gv,"d":date.today()}); st.rerun()
+    df_v = carregar_dados("vagas")
+    for _, row in df_v.iterrows():
+        with st.expander(f"🏢 {row['nome_vaga']} ({row['status_vaga']})"):
+            with st.form(f"edv{row['id']}"):
+                ns = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
+                if st.form_submit_button("ATUALIZAR"):
+                    df = date.today() if ns == "Finalizada" else None
+                    executar_sql("UPDATE vagas SET status_vaga=:s, data_fechamento=:df WHERE id=:id", {"s":ns,"df":df,"id":row['id']}); st.rerun()
+
+elif menu == "⚙️ CANDIDATOS":
+    df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     with st.expander("➕ NOVO CANDIDATO"):
         if not df_v.empty:
             with st.form("nc"):
                 nc = st.text_input("Nome"); vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist())
                 if st.form_submit_button("ADICIONAR"):
                     executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc}); st.rerun()
-    
     for _, vr in df_v.iterrows():
         if not df_c.empty:
             lista = df_c[df_c['vaga_vinculada'] == vr['nome_vaga']]
@@ -146,54 +169,85 @@ if menu == "⚙️ CANDIDATOS":
                     with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
                         c1, c2 = st.columns(2)
                         with c1:
-                            st.write("**📍 Gestão**")
-                            ns = st.selectbox("Status", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"s{cr['id']}", index=0)
+                            st.write("**📍 Gestão de Etapa**")
+                            ns = st.selectbox("Mover para", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"s{cr['id']}")
                             if st.button("Salvar Status", key=f"b{cr['id']}"):
                                 executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
-                        
                         with c2:
-                            st.write("**🤖 IA**")
-                            cv = st.file_uploader("Upload CV (PDF)", type="pdf", key=f"p{cr['id']}")
-                            sa = st.text_input("Salário Atual", key=f"sa{cr['id']}")
-                            sp = st.text_input("Pretensão", key=f"sp{cr['id']}")
-                            if cv and st.button("✨ Gerar Parecer", key=f"gi{cr['id']}"):
+                            st.write("**🤖 IA: Parecer**")
+                            cv = st.file_uploader("PDF CV", type="pdf", key=f"p{cr['id']}")
+                            sa = st.text_input("Salário Atual", key=f"sa{cr['id']}"); sp = st.text_input("Pretensão", key=f"sp{cr['id']}")
+                            if cv and st.button("✨ Gerar", key=f"gi{cr['id']}"):
                                 with st.spinner("Analisando..."):
                                     txt = extrair_texto_pdf(cv)
-                                    resultado = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], txt, sa, sp)
-                                    executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p":resultado,"id":cr['id']})
-                                    st.rerun()
+                                    res = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], txt, sa, sp)
+                                    executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p":res,"id":cr['id']}); st.rerun()
                         
                         if 'parecer_ia' in cr and pd.notnull(cr['parecer_ia']) and str(cr['parecer_ia']).strip() != "":
                             st.markdown(f'<div class="parecer-box">{cr["parecer_ia"]}</div>', unsafe_allow_html=True)
-                            pdf = gerar_pdf_parecer(cr['parecer_ia'])
-                            st.download_button("📥 Baixar PDF", pdf, f"Parecer_{cr['candidato']}.pdf", "application/pdf", key=f"dl{cr['id']}")
-
-# --- ABAS DE APOIO ---
-elif menu == "📊 INDICADORES":
-    df_c = carregar_dados("candidatos")
-    if not df_c.empty:
-        cnt = df_c['status_geral'].value_counts().reset_index()
-        st.plotly_chart(px.funnel(cnt, x='count', y='status_geral', color_discrete_sequence=['#8DF768']))
-
-elif menu == "🏢 VAGAS":
-    with st.form("v"):
-        n = st.text_input("Vaga"); g = st.text_input("Gestor")
-        if st.form_submit_button("Criar"):
-            executar_sql("INSERT INTO vagas (nome_vaga, status_vaga, gestor, data_abertura) VALUES (:n, 'Aberta', :g, :d)", {"n":n,"g":g,"d":date.today()}); st.rerun()
-    st.dataframe(carregar_dados("vagas"))
+                            pdf_bytes = gerar_pdf_parecer(cr['parecer_ia'])
+                            st.download_button("📥 PDF", pdf_bytes, f"Parecer_{cr['candidato']}.pdf", "application/pdf", key=f"dl{cr['id']}")
 
 elif menu == "🚀 ONBOARDING":
-    df = carregar_dados("candidatos")
-    st.write("Candidatos aprovados aguardando onboarding.")
-    st.dataframe(df[df['status_geral'] == 'Finalizada'] if not df.empty else df)
+    df_on = carregar_dados("candidatos")
+    if not df_on.empty:
+        df_f = df_on[df_on["status_geral"] == "Finalizada"]
+        if not df_f.empty:
+            sel = st.selectbox("Colaborador:", df_f["candidato"].tolist())
+            c_data = df_f[df_f["candidato"] == sel].iloc[0]
+            col1, col2, col3, col4 = st.columns(4)
+            p = col1.checkbox("Proposta", value=bool(c_data.get('envio_proposta')), key="on1")
+            d = col2.checkbox("Docs", value=bool(c_data.get('solic_documentos')), key="on2")
+            c = col3.checkbox("Contrato", value=bool(c_data.get('solic_contrato')), key="on3")
+            a = col4.checkbox("Acessos", value=bool(c_data.get('solic_acessos')), key="on4")
+            if st.button("Salvar Onboarding"):
+                executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":c_data['id']}); st.rerun()
 
+# --- 8. MÓDULOS DP ---
 elif menu == "📊 DASHBOARD DP":
-    st.write("Controle de contratos e prazos.")
-    st.dataframe(carregar_dados("contratos_estagio"))
+    df_est = carregar_dados("contratos_estagio")
+    if not df_est.empty:
+        df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
+        df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
+        hoje = pd.Timestamp(date.today())
+        df_est['doc_ok'] = (df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("🎓 TOTAL", len(df_est))
+        alerta = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
+        c2.metric("⚠️ VENCENDO (30 DIAS)", alerta)
+        c3.metric("✅ DOCS OK", len(df_est[df_est['doc_ok'] == True]))
+        st.divider(); col_l, col_r = st.columns(2)
+        with col_l:
+            st.subheader("🚨 Pendências")
+            for _, r in df_est[df_est['doc_ok'] == False].iterrows():
+                st.warning(f"**{r['estagiario']}**")
+        with col_r:
+            st.subheader("📅 Timeline de Estágio")
+            st.dataframe(df_est[['estagiario', 'data_fim', 'doc_ok']])
 
 elif menu == "🎓 ESTAGIÁRIOS":
-    with st.form("e"):
-        n = st.text_input("Nome"); f = st.date_input("Fim Contrato")
-        if st.form_submit_button("Cadastrar"):
-            executar_sql("INSERT INTO contratos_estagio (estagiario, data_fim) VALUES (:n, :f)", {"n":n,"f":f}); st.rerun()
-    st.dataframe(carregar_dados("contratos_estagio"))
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.subheader("📝 Novo Registro")
+        with st.form("f_est", clear_on_submit=True):
+            n = st.text_input("Nome"); i = st.text_input("Instituição"); f = st.text_input("Função")
+            t = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
+            di = st.date_input("Início"); df = st.date_input("Término")
+            if st.form_submit_button("CADASTRAR"):
+                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, funcao, time_equipe, data_inicio, data_fim) VALUES (:n, :i, :f, :t, :di, :df)", 
+                             {"n": n, "i": i, "f": f, "t": t, "di": di, "df": df}); st.rerun()
+    with col2:
+        st.subheader("📋 Gestão")
+        df_e = carregar_dados("contratos_estagio")
+        if not df_e.empty:
+            for _, r in df_e.iterrows():
+                with st.expander(f"👤 {r['estagiario']}"):
+                    ca, cb, cc, cd = st.columns(4)
+                    s = ca.checkbox("Solicit.", value=bool(r.get('solic_contrato_dp')), key=f"s{r['id']}")
+                    ae = cb.checkbox("ETUS", value=bool(r.get('assina_etus')), key=f"ae{r['id']}")
+                    af = cc.checkbox("Facul.", value=bool(r.get('assina_faculdade')), key=f"af{r['id']}")
+                    ej = cd.checkbox("Jurid.", value=bool(r.get('envio_juridico')), key=f"ej{r['id']}")
+                    if st.button("Salvar Checklist", key=f"sv{r['id']}"):
+                        executar_sql("UPDATE contratos_estagio SET solic_contrato_dp=:s, assina_etus=:ae, assina_faculdade=:af, envio_juridico=:ej WHERE id=:id", {"s":s,"ae":ae,"af":af,"ej":ej,"id":r['id']}); st.rerun()
+                    if st.button("🗑️ Excluir", key=f"dl{r['id']}"):
+                        executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
