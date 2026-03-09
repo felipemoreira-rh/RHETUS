@@ -6,7 +6,7 @@ from datetime import datetime, date
 import os
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
-st.set_page_config(page_title="Gestão ETUS - Pro", layout="wide", page_icon="logo.png")
+st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="logo.png")
 
 st.markdown("""
     <style>
@@ -58,35 +58,69 @@ inicializar_banco()
 
 # --- 5. SIDEBAR COM MENUS SEPARADOS (RH E DP) ---
 with st.sidebar:
-    # Mostra o logo ou título
-    caminho_logo = "logo.png"
-    if os.path.exists(caminho_logo):
-        st.image(caminho_logo, use_container_width=True)
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
     else:
         st.markdown("## 🏢 RH ETUS")
     
     st.divider()
-    
-    # 1º Nível: Seleção de Área
     area_selecionada = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal"])
-    
     st.divider()
 
-    # 2º Nível: Menu Dinâmico
     if area_selecionada == "RH - Recrutamento":
         st.subheader("MENU RH")
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
     else:
         st.subheader("MENU DP")
-        menu = st.radio("NAVEGAÇÃO", ["🎓 ESTAGIÁRIOS", "📄 OUTROS DOCUMENTOS"]) # Adicionei um placeholder para crescermos depois
+        menu = st.radio("NAVEGAÇÃO", ["🎓 ESTAGIÁRIOS", "📄 DOCUMENTOS"])
 
-# Título dinâmico no corpo do app
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
 # --- 6. LÓGICA DAS ABAS ---
 
-# --- MÓDULO DP ---
-if menu == "🎓 ESTAGIÁRIOS":
+# --- MÓDULO RH: INDICADORES (RESTAURADO) ---
+if menu == "📊 INDICADORES":
+    df_v = carregar_dados("vagas")
+    df_c = carregar_dados("candidatos")
+    
+    if not df_v.empty:
+        df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'], errors='coerce')
+        df_v['data_fechamento'] = pd.to_datetime(df_v['data_fechamento'], errors='coerce')
+        
+        # Cálculo Time-To-Hire
+        df_fechadas = df_v[df_v['status_vaga'] == 'Finalizada'].copy().dropna(subset=['data_abertura', 'data_fechamento'])
+        avg_tth = int((df_fechadas['data_fechamento'] - df_fechadas['data_abertura']).dt.days.mean()) if not df_fechadas.empty else 0
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
+        c2.metric("⏱️ TIME-TO-HIRE MÉDIO", f"{avg_tth} dias")
+        c3.metric("👥 CANDIDATOS ATIVOS", len(df_c[~df_c['status_geral'].isin(['Finalizada', 'Perda'])]) if not df_c.empty else 0)
+
+        st.divider()
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.subheader("📊 Conversão por Etapa")
+            if not df_c.empty:
+                ordem_etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
+                contagem_etapas = df_c['status_geral'].value_counts().reindex(ordem_etapas).fillna(0).reset_index()
+                contagem_etapas.columns = ['Etapa', 'Candidatos']
+                fig_funil = px.funnel(contagem_etapas, x='Candidatos', y='Etapa', color_discrete_sequence=['#8DF768'])
+                fig_funil.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_funil, use_container_width=True)
+
+        with col_right:
+            st.subheader("❌ Motivos de Perda")
+            if not df_c.empty and df_c['motivo_perda'].notnull().any():
+                df_perda = df_c[df_c['motivo_perda'].notnull()]
+                fig_perda = px.pie(df_perda, names='motivo_perda', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_perda.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_perda, use_container_width=True)
+            else:
+                st.info("Sem dados de perda registrados.")
+
+# --- MÓDULO DP: ESTAGIÁRIOS ---
+elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
     with col1:
         st.subheader("📝 Novo Contrato")
@@ -113,24 +147,17 @@ if menu == "🎓 ESTAGIÁRIOS":
                         executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id": row['id']})
                         st.rerun()
 
-elif menu == "📄 OUTROS DOCUMENTOS":
-    st.info("Espaço reservado para futuras funcionalidades do DP (ex: Férias, Folha de Pagamento).")
-
-# --- MÓDULO RH ---
-elif menu == "📊 INDICADORES":
-    df_v = carregar_dados("vagas")
-    df_c = carregar_dados("candidatos")
-    if not df_v.empty:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
-        c3.metric("👥 CANDIDATOS ATIVOS", len(df_c[~df_c['status_geral'].isin(['Finalizada', 'Perda'])]) if not df_c.empty else 0)
-
+# --- MÓDULO RH: OUTRAS ABAS ---
 elif menu == "🏢 VAGAS":
     with st.expander("➕ NOVA VAGA"):
         with st.form("n_vaga"):
             nv = st.text_input("Nome da Vaga"); gv = st.text_input("Gestor")
             if st.form_submit_button("CRIAR"):
                 executar_sql("INSERT INTO vagas (nome_vaga, status_vaga, gestor, data_abertura) VALUES (:n, 'Aberta', :g, :d)", {"n": nv, "g": gv, "d": date.today()}); st.rerun()
+    df_v = carregar_dados("vagas")
+    for _, row in df_v.iterrows():
+        with st.expander(f"🏢 {row['nome_vaga'].upper()}"):
+            st.write(f"Gestor: {row['gestor']}")
 
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_dados("vagas")
@@ -144,4 +171,4 @@ elif menu == "⚙️ CANDIDATOS":
                     st.write(f"👤 {cand['candidato']} - {cand['status_geral']}")
 
 elif menu == "🚀 ONBOARDING":
-    st.write("Módulo de Onboarding para candidatos aprovados.")
+    st.info("Módulo de Onboarding ativo.")
