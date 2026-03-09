@@ -72,23 +72,33 @@ with st.sidebar:
         # Adicionada a opção de Dashboard DP
         menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "📄 DOCUMENTOS"])
 
-# --- 6. NOVA ABA: DASHBOARD DP ---
+# --- 6. ABA: DASHBOARD DP (CORRIGIDA) ---
 if menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     
     if not df_est.empty:
-        df_est['data_fim'] = pd.to_datetime(df_est['data_fim']).dt.date
-        hoje = date.today()
+        # CONVERSÃO ESSENCIAL: Garante que o pandas entenda como data
+        df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
+        df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
+        
+        hoje = pd.Timestamp(date.today()) # Usando Timestamp para compatibilidade
         
         # Cálculos de Indicadores
         total = len(df_est)
         vencidos = len(df_est[df_est['data_fim'] < hoje])
-        alerta = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
+        
+        # Cálculo de alerta (vencendo em até 30 dias)
+        # Filtramos quem ainda não venceu E cuja diferença de dias é <= 30
+        df_alerta = df_est[
+            (df_est['data_fim'] >= hoje) & 
+            ((df_est['data_fim'] - hoje).dt.days <= 30)
+        ]
+        alerta = len(df_alerta)
         
         c1, c2, c3 = st.columns(3)
         c1.metric("🎓 TOTAL ESTAGIÁRIOS", total)
-        c2.metric("⚠️ VENCENDO (30 DIAS)", alerta, delta_color="inverse")
-        c3.metric("🚨 CONTRATOS VENCIDOS", vencidos, delta_color="inverse")
+        c2.metric("⚠️ VENCENDO (30 DIAS)", alerta)
+        c3.metric("🚨 CONTRATOS VENCIDOS", vencidos)
         
         st.divider()
         
@@ -96,39 +106,43 @@ if menu == "📊 DASHBOARD DP":
         
         with col_graf:
             st.subheader("📑 Status da Documentação")
-            # Somando os True nos campos de checklist
+            # Somando os campos de checklist (garantindo que nulos sejam 0)
             etapas = {
-                "Solicitação": df_est["solic_contrato_dp"].sum(),
-                "Assin. ETUS": df_est["assina_etus"].sum(),
-                "Assin. Faculdade": df_est["assina_faculdade"].sum(),
-                "Jurídico": df_est["envio_juridico"].sum()
+                "Solicitação": int(df_est["solic_contrato_dp"].fillna(False).sum()),
+                "Assin. ETUS": int(df_est["assina_etus"].fillna(False).sum()),
+                "Assin. Faculdade": int(df_est["assina_faculdade"].fillna(False).sum()),
+                "Jurídico": int(df_est["envio_juridico"].fillna(False).sum())
             }
             df_etapas = pd.DataFrame(list(etapas.items()), columns=['Etapa', 'Concluídos'])
             fig_etapas = px.bar(df_etapas, x='Etapa', y='Concluídos', color='Concluídos', 
-                               color_continuous_scale='Viridis', text_auto=True)
+                               color_continuous_scale='Greens', text_auto=True)
             fig_etapas.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_etapas, use_container_width=True)
             
         with col_lista:
             st.subheader("⏳ Timeline de Vencimentos")
-            # Tabela visual simplificada
-            for _, row in df_est.sort_values(by='data_fim').iterrows():
-                d_ini = pd.to_datetime(row['data_inicio']).date()
+            # Ordenar pelos mais próximos do fim
+            df_sorted = df_est.sort_values(by='data_fim')
+            
+            for _, row in df_sorted.iterrows():
+                d_ini = row['data_inicio']
                 d_fim = row['data_fim']
                 
+                # Cálculo de progresso visual
                 total_d = (d_fim - d_ini).days
                 passado = (hoje - d_ini).days
-                progresso = max(0, min(100, int((passado / total_d) * 100))) if total_d > 0 else 0
                 
-                cor_prog = "green" if progresso < 80 else "orange" if progresso < 100 else "red"
+                if total_d > 0:
+                    progresso = max(0, min(100, int((passado / total_d) * 100)))
+                else:
+                    progresso = 0
                 
-                st.write(f"**{row['estagiario']}** ({row['time_equipe']})")
+                st.write(f"**{row['estagiario']}** ({row.get('time_equipe', 'N/A')})")
                 st.progress(progresso / 100)
-                st.caption(f"Vence em: {d_fim.strftime('%d/%m/%Y')} | {progresso}% concluído")
+                st.caption(f"Término: {d_fim.strftime('%d/%m/%Y')} | {progresso}% do contrato decorrido")
                 st.write("")
     else:
         st.info("Ainda não há dados de estagiários para exibir no Dashboard.")
-
 # --- MANTÉM AS DEMAIS ABAS (ESTAGIÁRIOS, VAGAS, ETC) ---
 # --- 6. LÓGICA DAS ABAS ---
 
@@ -297,6 +311,7 @@ elif menu == "⚙️ CANDIDATOS":
 
 elif menu == "🚀 ONBOARDING":
     st.info("Módulo de Onboarding ativo.")
+
 
 
 
