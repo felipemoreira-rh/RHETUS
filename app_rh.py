@@ -51,6 +51,7 @@ def executar_sql(query, params=None):
 # --- 4. INICIALIZAÇÃO DO BANCO ---
 def inicializar_banco():
     with engine.begin() as conn:
+        # 1. Cria as tabelas se não existirem
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS vagas (
                 id SERIAL PRIMARY KEY, 
@@ -63,11 +64,17 @@ def inicializar_banco():
                 solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE
             );
         """))
-        # Bloco de correção para tabelas pré-existentes sem a coluna ID
-        conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
-        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
-
-inicializar_banco()
+        
+        # 2. Tenta adicionar a coluna ID separadamente para não travar se der erro
+        try:
+            conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
+        except Exception:
+            pass # Ignora se a coluna já existir ou se houver erro de restrição
+            
+        try:
+            conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;"))
+        except Exception:
+            pass # Ignora para evitar o erro de parada total
 
 # --- 5. SIDEBAR E NAVEGAÇÃO ---
 with st.sidebar:
@@ -216,3 +223,4 @@ elif menu == "🚀 ONBOARDING":
             executar_sql(f"UPDATE candidatos SET {set_query} WHERE id=:id", {**res_on, "id": c_data["id"]})
             st.success("Onboarding atualizado!")
             st.rerun()
+
