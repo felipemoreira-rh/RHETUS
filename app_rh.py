@@ -6,11 +6,7 @@ from datetime import datetime
 import os
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
-st.set_page_config(
-    page_title="RH ETUS - Gestão Pro", 
-    layout="wide", 
-    page_icon="logo.png" 
-)
+st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="logo.png")
 
 st.markdown("""
     <style>
@@ -34,11 +30,11 @@ def get_engine():
 engine = get_engine()
 
 # --- 3. FUNÇÕES DE DADOS ---
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def carregar_vagas():
     return pd.read_sql("SELECT * FROM vagas ORDER BY nome_vaga", engine)
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def carregar_candidatos():
     return pd.read_sql("SELECT * FROM candidatos", engine)
 
@@ -52,71 +48,98 @@ def executar_sql(query, params=None):
         st.error(f"Erro na operação: {e}")
         return False
 
-# --- 4. INICIALIZAÇÃO DO BANCO ---
+# --- 4. INICIALIZAÇÃO DO BANCO (ATUALIZADA) ---
 def inicializar_banco():
     with engine.begin() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS vagas (
                 id SERIAL PRIMARY KEY, 
-                nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE
+                nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, 
+                data_abertura DATE, data_fechamento DATE
             );
             CREATE TABLE IF NOT EXISTS candidatos (
                 id SERIAL PRIMARY KEY, 
                 candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT,
+                motivo_perda TEXT,
                 envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE,
                 solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE
             );
         """))
-        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL;"))
+        # Migrações para colunas novas
+        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS data_fechamento DATE;"))
         except: pass
-        try: conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS id SERIAL;"))
+        try: conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS motivo_perda TEXT;"))
+        except: pass
+        try: conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS id SERIAL;"))
         except: pass
 
 inicializar_banco()
 
-# --- 5. SIDEBAR E NAVEGAÇÃO ---
+# --- 5. SIDEBAR ---
 with st.sidebar:
     caminho_logo = "logo.png" 
     if os.path.exists(caminho_logo):
         st.image(caminho_logo, use_container_width=True)
     else:
         st.markdown("## 🏢 RH ETUS")
-        
     st.divider()
     menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 6. ABA: INDICADORES (RESTAURADO) ---
+# --- 6. ABA: INDICADORES (NOVOS INDICADORES INCLUÍDOS) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_vagas()
     df_c = carregar_candidatos()
     
     if not df_v.empty:
-        hoje = pd.Timestamp(datetime.now().date())
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
-        v_ativas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
+        df_v['data_fechamento'] = pd.to_datetime(df_v['data_fechamento'])
         
-        # Cálculo de Aging
-        v_ativas['aging'] = v_ativas['data_abertura'].apply(lambda x: (hoje - x).days if pd.notnull(x) else 0)
-        
+        # 1. TIME-TO-HIRE (Vagas Finalizadas)
+        df_fechadas = df_v[df_v['status_vaga'] == 'Finalizada'].copy()
+        if not df_fechadas.empty:
+            df_fechadas['time_to_hire'] = (df_fechadas['data_fechamento'] - df_fechadas['data_abertura']).dt.days
+            avg_tth = int(df_fechadas['time_to_hire'].mean())
+        else:
+            avg_tth = 0
+
+        # 2. MÉTRICAS TOPO
         c1, c2, c3 = st.columns(3)
-        c1.metric("📌 VAGAS ABERTAS", len(v_ativas))
-        c2.metric("⏱️ AGING MÉDIO", f"{int(v_ativas['aging'].mean()) if not v_ativas.empty else 0} dias")
+        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
+        c2.metric("⏱️ TIME-TO-HIRE MÉDIO", f"{avg_tth} dias")
         c3.metric("👥 CANDIDATOS ATIVOS", len(df_c[df_c['status_geral'] != 'Finalizada']) if not df_c.empty else 0)
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.subheader("🕒 Aging por Vaga")
-            st.plotly_chart(px.bar(v_ativas, x='aging', y='nome_vaga', orientation='h', 
-                                   color_discrete_sequence=['#8DF768']), use_container_width=True)
-        with col_b:
-            st.subheader("📊 Funil por Etapa (%)")
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            # 3. TAXA DE CONVERSÃO (YIELD RATIO)
+            st.subheader("📊 Conversão por Etapa")
             if not df_c.empty:
-                df_status = df_c.groupby(['vaga_vinculada', 'status_geral']).size().reset_index(name='qtd')
-                fig = px.bar(df_status, y="vaga_vinculada", x="qtd", color="status_geral", orientation='h', barmode="relative")
-                fig.update_layout(barnorm='percent', showlegend=True) # Legenda restaurada
-                st.plotly_chart(fig, use_container_width=True)
+                ordem_etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
+                contagem_etapas = df_c['status_geral'].value_counts().reindex(ordem_etapas).fillna(0).reset_index()
+                contagem_etapas.columns = ['Etapa', 'Candidatos']
+                fig_funil = px.funnel(contagem_etapas, x='Candidatos', y='Etapa', color_discrete_sequence=['#8DF768'])
+                st.plotly_chart(fig_funil, use_container_width=True)
+
+        with col_right:
+            # 4. MOTIVOS DE PERDA (DECLÍNIO)
+            st.subheader("❌ Motivos de Desistência/Perda")
+            if not df_c.empty and df_c['motivo_perda'].notnull().any():
+                df_perda = df_c[df_c['motivo_perda'].notnull()]
+                fig_perda = px.pie(df_perda, names='motivo_perda', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                st.plotly_chart(fig_perda, use_container_width=True)
+            else:
+                st.info("Ainda não há dados de motivos de perda registrados.")
+
+        # 5. TIME-TO-HIRE POR ÁREA
+        if not df_fechadas.empty:
+            st.subheader("🏢 Time-to-Hire por Área (Dias)")
+            fig_area = px.bar(df_fechadas.groupby('area')['time_to_hire'].mean().reset_index(), 
+                              x='area', y='time_to_hire', color_discrete_sequence=['#151514'])
+            st.plotly_chart(fig_area, use_container_width=True)
 
 # --- 7. ABA: VAGAS ---
 elif menu == "🏢 VAGAS":
@@ -141,7 +164,9 @@ elif menu == "🏢 VAGAS":
                     eg = st.text_input("Gestor", value=row['gestor'])
                     es = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
                     if st.form_submit_button("SALVAR ALTERAÇÕES"):
-                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s WHERE nome_vaga=:n", {"g": eg, "s": es, "n": row['nome_vaga']})
+                        data_f = datetime.now().date() if es == "Finalizada" else None
+                        executar_sql("UPDATE vagas SET gestor=:g, status_vaga=:s, data_fechamento=:df WHERE nome_vaga=:n", 
+                                     {"g": eg, "s": es, "df": data_f, "n": row['nome_vaga']})
                         st.rerun()
             with col2:
                 if st.button("🗑️ EXCLUIR", key=f"del_v_{row_id}", use_container_width=True):
@@ -152,6 +177,7 @@ elif menu == "🏢 VAGAS":
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     df_c = carregar_candidatos()
+
     with st.expander("➕ ADICIONAR NOVO CANDIDATO"):
         if not df_vagas.empty:
             with st.form("add_c", clear_on_submit=True):
@@ -170,11 +196,28 @@ elif menu == "⚙️ CANDIDATOS":
             with st.expander(f"👤 {cand['candidato']} ({cand['status_geral']})"):
                 etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
-                novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
-                if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
-                    novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
-                    executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", {"s": novo_st, "h": novo_h, "n": cand['candidato']})
-                    st.rerun()
+                
+                c_edit, c_del = st.columns([3, 1])
+                
+                with c_edit:
+                    novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
+                    if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
+                        novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
+                        executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", 
+                                     {"s": novo_st, "h": novo_h, "n": cand['candidato']})
+                        st.rerun()
+                
+                with c_del:
+                    st.write("---")
+                    motivo = st.selectbox("Motivo da Saída", ["-", "Pretensão Salarial", "Falta de Fit Cultural", "Desistência", "Reprovado Técnico", "Outros"], key=f"mot_{c_id}")
+                    if st.button("❌ REGISTRAR PERDA", key=f"perda_{c_id}"):
+                        if motivo != "-":
+                            # Em vez de deletar, marcamos o motivo para o gráfico de perda
+                            executar_sql("UPDATE candidatos SET motivo_perda=:m, status_geral='Perda' WHERE candidato=:n", {"m": motivo, "n": cand['candidato']})
+                            st.success("Perda registrada!")
+                            st.rerun()
+                        else:
+                            st.warning("Selecione um motivo.")
 
 # --- 9. ABA: ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
