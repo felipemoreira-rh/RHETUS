@@ -24,10 +24,13 @@ st.markdown("""
 
 # --- 2. CONFIGURAÇÃO IA (GEMINI) ---
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except:
-    st.error("Configure 'GEMINI_API_KEY' nos Secrets para usar a IA.")
+    if "GEMINI_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model_ai = genai.GenerativeModel('gemini-1.5-flash')
+    else:
+        st.warning("Aguardando configuração da GEMINI_API_KEY nos Secrets.")
+except Exception as e:
+    st.error(f"Erro ao configurar IA: {e}")
 
 # --- 3. MOTOR DE BANCO DE DADOS ---
 @st.cache_resource
@@ -35,12 +38,13 @@ def get_engine():
     try:
         DB_URL = st.secrets["postgres"]["url"]
         return create_engine(DB_URL, pool_size=5, max_overflow=10, connect_args={"sslmode": "require"})
-    except:
+    except Exception as e:
+        st.error(f"Erro na conexão com Banco: {e}")
         st.stop()
 
 engine = get_engine()
 
-# --- 4. FUNÇÕES DE DADOS E IA ---
+# --- 4. FUNÇÕES DE APOIO ---
 def executar_sql(query, params=None):
     try:
         with engine.begin() as conn:
@@ -48,22 +52,32 @@ def executar_sql(query, params=None):
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro: {e}")
+        st.error(f"Erro SQL: {e}")
         return False
 
 @st.cache_data(ttl=60)
 def carregar_dados(tabela):
-    return pd.read_sql(f"SELECT * FROM {tabela}", engine)
+    try:
+        return pd.read_sql(f"SELECT * FROM {tabela}", engine)
+    except:
+        return pd.DataFrame()
 
 def extrair_texto_pdf(file):
-    reader = PdfReader(file)
-    texto = ""
-    for page in reader.pages:
-        texto += page.extract_text()
-    return texto
+    try:
+        reader = PdfReader(file)
+        texto = ""
+        for page in reader.pages:
+            texto += page.extract_text()
+        return texto
+    except Exception as e:
+        st.error(f"Erro ao ler PDF: {e}")
+        return ""
 
-def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, salario_atual, pretensao):
-    prompt_base = f"""
+def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, s_atual, s_pret):
+    prompt_final = f"""
+    Use o modelo abaixo para gerar o parecer técnico de candidatos para vagas de ANALISTA.
+    A resposta deve seguir exatamente a estrutura, linguagem e título indicados.
+
     Quero que você gere um parecer técnico para uma vaga de analista seguindo exatamente as instruções abaixo:
 
     O título deve ser:
@@ -76,18 +90,24 @@ def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, salario_atual, pretensao):
     4. Pretensão Salarial
     5. Soft Skills e Interesses Pessoais
     6. Adequação à Vaga e Potencial de Desenvolvimento
-    
+
     O texto deve ser escrito em formato de parágrafos curtos, com clareza e objetividade.
     Não invente informações. Use apenas os dados fornecidos.
     Se faltar algum dado, registre como "Informação não fornecida".
 
-    DADOS DO CANDIDATO:
-    Salário Atual: {salário_atual}
-    Pretensão: {pretensao}
-    Conteúdo do Currículo: {texto_cv}
+    DADOS FORNECIDOS:
+    Candidato: {nome_cand}
+    Vaga: {nome_vaga}
+    Salário Atual: {s_atual if s_atual else "Informação não fornecida"}
+    Pretensão Salarial: {s_pret if s_pret else "Informação não fornecida"}
+    Conteúdo extraído do currículo:
+    {texto_cv}
     """
-    response = model.generate_content(prompt_base)
-    return response.text
+    try:
+        response = model_ai.generate_content(prompt_final)
+        return response.text
+    except Exception as e:
+        return f"Erro ao gerar parecer com IA: {e}"
 
 # --- 5. INICIALIZAÇÃO DO BANCO ---
 def inicializar_banco():
@@ -112,28 +132,29 @@ with st.sidebar:
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
-# --- 7. LÓGICA DAS ABAS ---
-
+# --- 7. MÓDULO DP ---
 if menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
         df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
         df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
         hoje = pd.Timestamp(date.today())
+        
         df_est['doc_concluida'] = (df_est['solic_contrato_dp'] == True) & (df_est['assina_etus'] == True) & (df_est['assina_faculdade'] == True) & (df_est['envio_juridico'] == True)
         df_pendentes = df_est[df_est['doc_concluida'] == False]
         df_concluidos = df_est[df_est['doc_concluida'] == True]
+
         c1, c2, c3 = st.columns(3)
         c1.metric("🎓 TOTAL", len(df_est))
         c2.metric("⏳ PENDENTES DOC.", len(df_pendentes))
         c3.metric("✅ CONCLUÍDOS DOC.", len(df_concluidos))
-        st.divider()
-        col_left, col_right = st.columns(2)
+
+        st.divider(); col_left, col_right = st.columns(2)
         with col_left:
             st.subheader("🚨 Pendências de Documentação")
             for _, row in df_pendentes.iterrows():
                 faltas = [k for k,v in {'Solic.':row['solic_contrato_dp'], 'ETUS':row['assina_etus'], 'Facul.':row['assina_faculdade'], 'Jurid.':row['envio_juridico']}.items() if not v]
-                st.warning(f"**{row['estagiario']}** | Falta: {', '.join(faltas)}")
+                st.warning(f"**{row['estagiario']}** | Pendente: {', '.join(faltas)}")
         with col_right:
             st.subheader("📅 Vencimentos (Concluídos)")
             for _, row in df_concluidos.iterrows():
@@ -141,7 +162,7 @@ if menu == "📊 DASHBOARD DP":
                 passado = (hoje - row['data_inicio']).days
                 prog = max(0, min(100, int((passado/total_d)*100))) if total_d > 0 else 0
                 st.write(f"**{row['estagiario']}** ✅")
-                st.progress(prog/100); st.caption(f"Até {row['data_fim'].strftime('%d/%m/%Y')}")
+                st.progress(prog/100); st.caption(f"Ativo até {row['data_fim'].strftime('%d/%m/%Y')}")
 
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
@@ -171,6 +192,7 @@ elif menu == "🎓 ESTAGIÁRIOS":
                 if st.button("🗑️ Excluir", key=f"del{row['id']}"):
                     executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":row['id']}); st.rerun()
 
+# --- 8. MÓDULO RH ---
 elif menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     if not df_v.empty:
@@ -217,33 +239,32 @@ elif menu == "⚙️ CANDIDATOS":
                 st.markdown(f'<div class="vaga-header">🏢 {vr["nome_vaga"].upper()}</div>', unsafe_allow_html=True)
                 for _, cr in cands.iterrows():
                     with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
-                        col_bt, col_ia = st.columns([1, 1])
-                        with col_bt:
-                            ns = st.selectbox("Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"], key=f"st{cr['id']}")
+                        col_etapa, col_ia_form = st.columns([1, 1])
+                        with col_etapa:
+                            ns = st.selectbox("Mover Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"st{cr['id']}")
                             if st.button("Salvar Etapa", key=f"upc{cr['id']}"):
                                 executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
                         
-                        # --- SEÇÃO DE IA E UPLOAD ---
-                        with col_ia:
-                            st.write("**🤖 Parecer com IA**")
-                            cv_file = st.file_uploader("Upload CV (PDF)", type="pdf", key=f"cv_{cr['id']}")
+                        with col_ia_form:
+                            st.write("**🤖 Gerar Parecer com IA**")
+                            cv_upload = st.file_uploader("Upload Currículo (PDF)", type="pdf", key=f"pdf_{cr['id']}")
                             s_at = st.text_input("Salário Atual", key=f"sat_{cr['id']}")
-                            s_pr = st.text_input("Pretensão", key=f"spr_{cr['id']}")
-                            
-                            if cv_file and st.button("Gerar Parecer", key=f"gen_{cr['id']}"):
-                                with st.spinner("Analisando currículo..."):
-                                    texto_pdf = extrair_texto_pdf(cv_file)
-                                    parecer = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], texto_pdf, s_at, s_pr)
-                                    executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p": parecer, "id": cr['id']})
+                            s_pr = st.text_input("Pretensão Salarial", key=f"spr_{cr['id']}")
+                            if cv_upload and st.button("Analisar e Gerar Parecer", key=f"ai_{cr['id']}"):
+                                with st.spinner("IA processando currículo..."):
+                                    texto_extraido = extrair_texto_pdf(cv_upload)
+                                    parecer_texto = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], texto_extraido, s_at, s_pr)
+                                    executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p": parecer_texto, "id": cr['id']})
                                     st.rerun()
                         
                         if cr.get('parecer_ia'):
-                            st.markdown("---")
-                            st.markdown("### 📄 Parecer Gerado")
+                            st.divider()
+                            st.markdown("#### 📄 Parecer Técnico Gerado")
                             st.info(cr['parecer_ia'])
 
 elif menu == "🚀 ONBOARDING":
-    df_on = pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada'", engine)
+    df_on = carregar_dados("candidatos")
+    df_on = df_on[df_on["status_geral"] == "Finalizada"]
     if not df_on.empty:
         sel = st.selectbox("Colaborador:", df_on["candidato"].tolist())
         c_data = df_on[df_on["candidato"] == sel].iloc[0]
