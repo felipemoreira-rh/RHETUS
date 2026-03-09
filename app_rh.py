@@ -119,9 +119,15 @@ if menu == "📊 INDICADORES":
             else:
                 st.info("Sem dados de perda registrados.")
 
-# --- MÓDULO DP: ESTAGIÁRIOS ---
-# --- MÓDULO DP: ESTAGIÁRIOS (COM EDIÇÃO E BARRA DE PROGRESSO) ---
+# --- MÓDULO DP: ESTAGIÁRIOS (COM TIME, FUNÇÃO E BARRA DE PROGRESSO) ---
 if menu == "🎓 ESTAGIÁRIOS":
+    # 1. Garante que as novas colunas existam no banco de dados
+    with engine.begin() as conn:
+        try: conn.execute(text("ALTER TABLE contratos_estagio ADD COLUMN IF NOT EXISTS time_equipe TEXT;"))
+        except: pass
+        try: conn.execute(text("ALTER TABLE contratos_estagio ADD COLUMN IF NOT EXISTS funcao TEXT;"))
+        except: pass
+
     col1, col2 = st.columns([1, 2])
     
     with col1:
@@ -129,11 +135,18 @@ if menu == "🎓 ESTAGIÁRIOS":
         with st.form("form_estagio", clear_on_submit=True):
             nome = st.text_input("Nome do Estagiário")
             inst = st.text_input("Instituição de Ensino")
+            # Novos campos solicitados:
+            funcao = st.text_input("Função / Cargo")
+            time_eq = st.selectbox("Time / Equipe", ["Tecnologia", "Comercial", "Marketing", "Operações", "RH", "Financeiro", "Outros"])
+            
             d_ini = st.date_input("Início do Contrato", value=date.today())
             d_fim = st.date_input("Término do Contrato")
+            
             if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, data_inicio, data_fim, status_contrato) VALUES (:n, :i, :di, :df, 'Ativo')",
-                             {"n": nome, "i": inst, "di": d_ini, "df": d_fim})
+                executar_sql("""
+                    INSERT INTO contratos_estagio (estagiario, instituicao, funcao, time_equipe, data_inicio, data_fim, status_contrato) 
+                    VALUES (:n, :i, :f, :t, :di, :df, 'Ativo')
+                """, {"n": nome, "i": inst, "f": funcao, "t": time_eq, "di": d_ini, "df": d_fim})
                 st.rerun()
 
     with col2:
@@ -147,61 +160,56 @@ if menu == "🎓 ESTAGIÁRIOS":
                 d_ini_val = pd.to_datetime(row['data_inicio']).date()
                 d_fim_val = pd.to_datetime(row['data_fim']).date()
                 
-                # Cálculo de Tempo e Progresso
+                # Cálculos de tempo
                 total_dias = (d_fim_val - d_ini_val).days
-                dias_decorridos = (hoje - d_ini_val).days
                 dias_restantes = (d_fim_val - hoje).days
+                percentual = max(0, min(100, int(((total_dias - dias_restantes) / total_dias) * 100))) if total_dias > 0 else 0
                 
-                # Evitar divisão por zero e limitar entre 0 e 100%
-                percentual = max(0, min(100, int((dias_decorridos / total_dias) * 100))) if total_dias > 0 else 0
+                # Alertas Visuais
+                status_txt, css = ("🔴 VENCIDO", "status-vencido") if dias_restantes < 0 else (f"🟡 VENCE EM {dias_restantes} DIAS", "status-alerta") if dias_restantes <= 30 else ("🟢 EM DIA", "status-ok")
                 
-                # Definição de Alerta Visual
-                if dias_restantes < 0:
-                    status_txt, css, cor_barra = "🔴 VENCIDO", "status-vencido", "red"
-                elif dias_restantes <= 30:
-                    status_txt, css, cor_barra = f"🟡 VENCE EM {dias_restantes} DIAS", "status-alerta", "orange"
-                else:
-                    status_txt, css, cor_barra = "🟢 EM DIA", "status-ok", "green"
-                
-                with st.expander(f"👤 {row['estagiario']} ({status_txt})"):
-                    # --- VISUALIZAÇÃO DO TEMPO ---
-                    st.write(f"**Instituição:** {row['instituicao']}")
-                    st.caption(f"Período: {d_ini_val.strftime('%d/%m/%Y')} até {d_fim_val.strftime('%d/%m/%Y')}")
+                with st.expander(f"👤 {row['estagiario']} | {row.get('funcao', 'Estagiário')} ({row.get('time_equipe', 'N/A')})"):
+                    col_info, col_status = st.columns([2, 1])
+                    with col_info:
+                        st.markdown(f"**Time:** {row.get('time_equipe', 'Não informado')}")
+                        st.markdown(f"**Função:** {row.get('funcao', 'Não informada')}")
+                        st.markdown(f"**Instituição:** {row['instituicao']}")
+                    with col_status:
+                        st.markdown(f"**Status:** <span class='{css}'>{status_txt}</span>", unsafe_allow_html=True)
+                    
                     st.progress(percentual / 100)
-                    st.info(f"O contrato está {percentual}% concluído. Restam {max(0, dias_restantes)} dias.")
+                    st.caption(f"Progresso do contrato: {percentual}% ({d_ini_val.strftime('%d/%m/%Y')} a {d_fim_val.strftime('%d/%m/%Y')})")
                     
                     st.divider()
                     
-                    # --- EDIÇÃO E EXCLUSÃO ---
+                    # --- AÇÕES (EDITAR / EXCLUIR) ---
                     c_edit, c_del = st.columns(2)
+                    if c_edit.button("📝 Editar", key=f"ed_btn_{row['id']}"):
+                        st.session_state[f"editando_{row['id']}"] = True
                     
-                    with c_edit:
-                        if st.button("📝 Editar Dados", key=f"btn_ed_{row['id']}"):
-                            st.session_state[f"editando_{row['id']}"] = True
-                    
-                    with c_del:
-                        if st.button("🗑️ Excluir", key=f"btn_del_{row['id']}", use_container_width=True):
-                            executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id": row['id']})
-                            st.rerun()
+                    if c_del.button("🗑️ Excluir", key=f"del_btn_{row['id']}", use_container_width=True):
+                        executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id": row['id']})
+                        st.rerun()
 
-                    # Formulário de Edição (aparece apenas se clicado)
+                    # Formulário de Edição
                     if st.session_state.get(f"editando_{row['id']}", False):
                         with st.form(f"form_ed_{row['id']}"):
                             en = st.text_input("Nome", value=row['estagiario'])
-                            ei = st.text_input("Instituição", value=row['instituicao'])
-                            edf = st.date_input("Nova Data Término", value=d_fim_val)
+                            ef = st.text_input("Função", value=row.get('funcao', ''))
+                            et = st.selectbox("Time", ["Tecnologia", "Comercial", "Marketing", "Operações", "RH", "Financeiro", "Outros"], 
+                                             index=["Tecnologia", "Comercial", "Marketing", "Operações", "RH", "Financeiro", "Outros"].index(row.get('time_equipe', 'Tecnologia')))
+                            edf = st.date_input("Novo Término", value=d_fim_val)
                             
-                            c_salvar, c_cancelar = st.columns(2)
-                            if c_salvar.form_submit_button("SALVAR ALTERAÇÕES"):
-                                executar_sql("UPDATE contratos_estagio SET estagiario=:n, instituicao=:i, data_fim=:df WHERE id=:id",
-                                             {"n": en, "i": ei, "df": edf, "id": row['id']})
-                                st.session_state[f"editando_{row['id']}"] = False
-                                st.rerun()
-                            if c_cancelar.form_submit_button("CANCELAR"):
+                            if st.form_submit_button("SALVAR"):
+                                executar_sql("""
+                                    UPDATE contratos_estagio 
+                                    SET estagiario=:n, funcao=:f, time_equipe=:t, data_fim=:df 
+                                    WHERE id=:id
+                                """, {"n": en, "f": ef, "t": et, "df": edf, "id": row['id']})
                                 st.session_state[f"editando_{row['id']}"] = False
                                 st.rerun()
         else:
-            st.info("Nenhum contrato de estágio registrado.")
+            st.info("Nenhum estagiário cadastrado no DP.")
 
 # --- MÓDULO RH: OUTRAS ABAS ---
 elif menu == "🏢 VAGAS":
@@ -228,4 +236,5 @@ elif menu == "⚙️ CANDIDATOS":
 
 elif menu == "🚀 ONBOARDING":
     st.info("Módulo de Onboarding ativo.")
+
 
