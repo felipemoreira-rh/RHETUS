@@ -4,6 +4,8 @@ import plotly.express as px
 from sqlalchemy import create_engine, text
 from datetime import datetime, date
 import os
+import google.generativeai as genai
+from pypdf import PdfReader
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="logo.png")
@@ -20,19 +22,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MOTOR DE BANCO DE DADOS ---
+# --- 2. CONFIGURAÇÃO IA (GEMINI) ---
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except:
+    st.error("Configure 'GEMINI_API_KEY' nos Secrets para usar a IA.")
+
+# --- 3. MOTOR DE BANCO DE DADOS ---
 @st.cache_resource
 def get_engine():
     try:
         DB_URL = st.secrets["postgres"]["url"]
         return create_engine(DB_URL, pool_size=5, max_overflow=10, connect_args={"sslmode": "require"})
     except:
-        st.error("Erro nas credenciais do banco de dados.")
         st.stop()
 
 engine = get_engine()
 
-# --- 3. FUNÇÕES DE DADOS ---
+# --- 4. FUNÇÕES DE DADOS E IA ---
 def executar_sql(query, params=None):
     try:
         with engine.begin() as conn:
@@ -47,29 +55,53 @@ def executar_sql(query, params=None):
 def carregar_dados(tabela):
     return pd.read_sql(f"SELECT * FROM {tabela}", engine)
 
-# --- 4. INICIALIZAÇÃO DO BANCO ---
+def extrair_texto_pdf(file):
+    reader = PdfReader(file)
+    texto = ""
+    for page in reader.pages:
+        texto += page.extract_text()
+    return texto
+
+def gerar_parecer_ia(nome_cand, nome_vaga, texto_cv, salario_atual, pretensao):
+    prompt_base = f"""
+    Quero que você gere um parecer técnico para uma vaga de analista seguindo exatamente as instruções abaixo:
+
+    O título deve ser:
+    PARECER RH — {nome_cand} — {nome_vaga} — Analista Responsável: Felipe da Silva Moreira Cristo
+    A linguagem deve ser formal, objetiva e profissional, sem emojis.
+    A estrutura do parecer deve seguir os SEIS tópicos abaixo, sempre nesta ordem. Não alterar títulos nem criar novos tópicos:
+    1. Perfil Acadêmico e Formação
+    2. Experiência e Histórico Profissional
+    3. Salário Atual
+    4. Pretensão Salarial
+    5. Soft Skills e Interesses Pessoais
+    6. Adequação à Vaga e Potencial de Desenvolvimento
+    
+    O texto deve ser escrito em formato de parágrafos curtos, com clareza e objetividade.
+    Não invente informações. Use apenas os dados fornecidos.
+    Se faltar algum dado, registre como "Informação não fornecida".
+
+    DADOS DO CANDIDATO:
+    Salário Atual: {salário_atual}
+    Pretensão: {pretensao}
+    Conteúdo do Currículo: {texto_cv}
+    """
+    response = model.generate_content(prompt_base)
+    return response.text
+
+# --- 5. INICIALIZAÇÃO DO BANCO ---
 def inicializar_banco():
     with engine.begin() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);
-            CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT, motivo_perda TEXT, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);
-            CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, status_contrato TEXT);
+            CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT, motivo_perda TEXT, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE, parecer_ia TEXT);
+            CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, status_contrato TEXT, time_equipe TEXT, funcao TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
         """))
-        colunas_dp = [
-            ("time_equipe", "TEXT"), ("funcao", "TEXT"), 
-            ("solic_contrato_dp", "BOOLEAN DEFAULT FALSE"), ("assina_etus", "BOOLEAN DEFAULT FALSE"), 
-            ("assina_faculdade", "BOOLEAN DEFAULT FALSE"), ("envio_juridico", "BOOLEAN DEFAULT FALSE")
-        ]
-        for col, tipo in colunas_dp:
-            try: conn.execute(text(f"ALTER TABLE contratos_estagio ADD COLUMN IF NOT EXISTS {col} {tipo};"))
-            except: pass
-
 inicializar_banco()
 
-# --- 5. SIDEBAR COM MENUS SEPARADOS ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
-    else: st.markdown("## 🏢 RH ETUS")
     st.divider()
     area_selecionada = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal"])
     st.divider()
@@ -80,7 +112,7 @@ with st.sidebar:
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
-# --- 6. MÓDULO DP ---
+# --- 7. LÓGICA DAS ABAS ---
 
 if menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
@@ -88,16 +120,13 @@ if menu == "📊 DASHBOARD DP":
         df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
         df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
         hoje = pd.Timestamp(date.today())
-        
         df_est['doc_concluida'] = (df_est['solic_contrato_dp'] == True) & (df_est['assina_etus'] == True) & (df_est['assina_faculdade'] == True) & (df_est['envio_juridico'] == True)
         df_pendentes = df_est[df_est['doc_concluida'] == False]
         df_concluidos = df_est[df_est['doc_concluida'] == True]
-
         c1, c2, c3 = st.columns(3)
         c1.metric("🎓 TOTAL", len(df_est))
         c2.metric("⏳ PENDENTES DOC.", len(df_pendentes))
         c3.metric("✅ CONCLUÍDOS DOC.", len(df_concluidos))
-
         st.divider()
         col_left, col_right = st.columns(2)
         with col_left:
@@ -113,7 +142,6 @@ if menu == "📊 DASHBOARD DP":
                 prog = max(0, min(100, int((passado/total_d)*100))) if total_d > 0 else 0
                 st.write(f"**{row['estagiario']}** ✅")
                 st.progress(prog/100); st.caption(f"Até {row['data_fim'].strftime('%d/%m/%Y')}")
-    else: st.info("Sem dados no DP.")
 
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
@@ -143,16 +171,13 @@ elif menu == "🎓 ESTAGIÁRIOS":
                 if st.button("🗑️ Excluir", key=f"del{row['id']}"):
                     executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":row['id']}); st.rerun()
 
-# --- 7. MÓDULO RH ---
-
 elif menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     if not df_v.empty:
         c1, c2, c3 = st.columns(3)
         c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
         if not df_c.empty:
-            st.divider()
-            col_l, col_r = st.columns(2)
+            st.divider(); col_l, col_r = st.columns(2)
             with col_l:
                 st.subheader("📊 Funil de Recrutamento")
                 ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
@@ -192,9 +217,30 @@ elif menu == "⚙️ CANDIDATOS":
                 st.markdown(f'<div class="vaga-header">🏢 {vr["nome_vaga"].upper()}</div>', unsafe_allow_html=True)
                 for _, cr in cands.iterrows():
                     with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
-                        ns = st.selectbox("Mover Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"], key=f"st{cr['id']}")
-                        if st.button("Salvar", key=f"upc{cr['id']}"):
-                            executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
+                        col_bt, col_ia = st.columns([1, 1])
+                        with col_bt:
+                            ns = st.selectbox("Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"], key=f"st{cr['id']}")
+                            if st.button("Salvar Etapa", key=f"upc{cr['id']}"):
+                                executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
+                        
+                        # --- SEÇÃO DE IA E UPLOAD ---
+                        with col_ia:
+                            st.write("**🤖 Parecer com IA**")
+                            cv_file = st.file_uploader("Upload CV (PDF)", type="pdf", key=f"cv_{cr['id']}")
+                            s_at = st.text_input("Salário Atual", key=f"sat_{cr['id']}")
+                            s_pr = st.text_input("Pretensão", key=f"spr_{cr['id']}")
+                            
+                            if cv_file and st.button("Gerar Parecer", key=f"gen_{cr['id']}"):
+                                with st.spinner("Analisando currículo..."):
+                                    texto_pdf = extrair_texto_pdf(cv_file)
+                                    parecer = gerar_parecer_ia(cr['candidato'], vr['nome_vaga'], texto_pdf, s_at, s_pr)
+                                    executar_sql("UPDATE candidatos SET parecer_ia=:p WHERE id=:id", {"p": parecer, "id": cr['id']})
+                                    st.rerun()
+                        
+                        if cr.get('parecer_ia'):
+                            st.markdown("---")
+                            st.markdown("### 📄 Parecer Gerado")
+                            st.info(cr['parecer_ia'])
 
 elif menu == "🚀 ONBOARDING":
     df_on = pd.read_sql("SELECT * FROM candidatos WHERE status_geral = 'Finalizada'", engine)
