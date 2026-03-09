@@ -6,11 +6,10 @@ from datetime import datetime
 import os
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
-# AJUSTE AQUI: Substituí o emoji '🏈' pelo caminho da sua imagem 'logo.png'
 st.set_page_config(
-    page_title="RH ETUS", 
+    page_title="RH ETUS - Gestão Pro", 
     layout="wide", 
-    page_icon="logo.png"  # Nome exato do arquivo que você subiu no GitHub
+    page_icon="logo.png" 
 )
 
 st.markdown("""
@@ -77,23 +76,18 @@ inicializar_banco()
 
 # --- 5. SIDEBAR E NAVEGAÇÃO ---
 with st.sidebar:
-    # AJUSTE AQUI: Nome do arquivo da logo
     caminho_logo = "logo.png" 
-    
     if os.path.exists(caminho_logo):
         st.image(caminho_logo, use_container_width=True)
     else:
         st.markdown("## 🏢 RH ETUS")
         
     st.divider()
-    menu = st.radio(
-        "NAVEGAÇÃO", 
-        ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"]
-    )
+    menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
 
 st.markdown('<div class="header-rh">RH ETUS</div>', unsafe_allow_html=True)
 
-# --- 6. ABA: INDICADORES ---
+# --- 6. ABA: INDICADORES (RESTAURADO) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_vagas()
     df_c = carregar_candidatos()
@@ -102,6 +96,8 @@ if menu == "📊 INDICADORES":
         hoje = pd.Timestamp(datetime.now().date())
         df_v['data_abertura'] = pd.to_datetime(df_v['data_abertura'])
         v_ativas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
+        
+        # Cálculo de Aging
         v_ativas['aging'] = v_ativas['data_abertura'].apply(lambda x: (hoje - x).days if pd.notnull(x) else 0)
         
         c1, c2, c3 = st.columns(3)
@@ -109,8 +105,18 @@ if menu == "📊 INDICADORES":
         c2.metric("⏱️ AGING MÉDIO", f"{int(v_ativas['aging'].mean()) if not v_ativas.empty else 0} dias")
         c3.metric("👥 CANDIDATOS ATIVOS", len(df_c[df_c['status_geral'] != 'Finalizada']) if not df_c.empty else 0)
 
-        st.subheader("🕒 Aging por Vaga")
-        st.plotly_chart(px.bar(v_ativas, x='aging', y='nome_vaga', orientation='h', color_discrete_sequence=['#8DF768']), use_container_width=True)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.subheader("🕒 Aging por Vaga")
+            st.plotly_chart(px.bar(v_ativas, x='aging', y='nome_vaga', orientation='h', 
+                                   color_discrete_sequence=['#8DF768']), use_container_width=True)
+        with col_b:
+            st.subheader("📊 Funil por Etapa (%)")
+            if not df_c.empty:
+                df_status = df_c.groupby(['vaga_vinculada', 'status_geral']).size().reset_index(name='qtd')
+                fig = px.bar(df_status, y="vaga_vinculada", x="qtd", color="status_geral", orientation='h', barmode="relative")
+                fig.update_layout(barnorm='percent', showlegend=True) # Legenda restaurada
+                st.plotly_chart(fig, use_container_width=True)
 
 # --- 7. ABA: VAGAS ---
 elif menu == "🏢 VAGAS":
@@ -146,7 +152,6 @@ elif menu == "🏢 VAGAS":
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     df_c = carregar_candidatos()
-
     with st.expander("➕ ADICIONAR NOVO CANDIDATO"):
         if not df_vagas.empty:
             with st.form("add_c", clear_on_submit=True):
@@ -166,7 +171,6 @@ elif menu == "⚙️ CANDIDATOS":
                 etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 idx_etapa = etapas.index(cand['status_geral']) if cand['status_geral'] in etapas else 0
                 novo_st = st.selectbox("Mover Etapa", etapas, index=idx_etapa, key=f"st_{c_id}")
-                
                 if st.button("ATUALIZAR STATUS", key=f"up_{c_id}"):
                     novo_h = f"➔ {datetime.now().strftime('%d/%m/%Y')}: {novo_st}\n" + (cand['historico'] or "")
                     executar_sql("UPDATE candidatos SET status_geral=:s, historico=:h WHERE candidato=:n", {"s": novo_st, "h": novo_h, "n": cand['candidato']})
@@ -187,4 +191,3 @@ elif menu == "🚀 ONBOARDING":
             set_query = ", ".join([f"{k}=:{k}" for k in res_on.keys()])
             executar_sql(f"UPDATE candidatos SET {set_query} WHERE candidato=:n", {**res_on, "n": sel_c})
             st.rerun()
-
