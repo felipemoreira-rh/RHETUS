@@ -120,10 +120,6 @@ if menu == "📊 INDICADORES":
         
         with col_left:
             st.subheader("📊 Conversão por Etapa")
-            
-
-[Image of a recruitment funnel diagram]
-
             if not df_c.empty:
                 ordem_etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 contagem_etapas = df_c['status_geral'].value_counts().reindex(ordem_etapas).fillna(0).reset_index()
@@ -172,7 +168,7 @@ elif menu == "🏢 VAGAS":
                     executar_sql("DELETE FROM vagas WHERE nome_vaga=:n", {"n": row['nome_vaga']})
                     st.rerun()
 
-# --- 8. ABA: CANDIDATOS (SEPARAÇÃO POR VAGA RESTAURADA) ---
+# --- 8. ABA: CANDIDATOS ---
 elif menu == "⚙️ CANDIDATOS":
     df_vagas = carregar_vagas()
     df_c = carregar_candidatos()
@@ -190,12 +186,10 @@ elif menu == "⚙️ CANDIDATOS":
                         st.rerun()
 
     if not df_vagas.empty:
-        # Loop para separar candidatos por cada vaga cadastrada
         for _, vaga_row in df_vagas.iterrows():
             vaga_nome = vaga_row['nome_vaga']
             cands_da_vaga = df_c[df_c['vaga_vinculada'] == vaga_nome]
             
-            # Só mostra o título da vaga se houver candidatos ou se a vaga estiver aberta
             if not cands_da_vaga.empty:
                 st.markdown(f'<div class="vaga-header">🏢 VAGA: {vaga_nome.upper()}</div>', unsafe_allow_html=True)
                 
@@ -222,7 +216,7 @@ elif menu == "⚙️ CANDIDATOS":
                                     st.rerun()
                                 else: st.warning("Selecione um motivo.")
     else:
-        st.info("Cadastre uma vaga primeiro para gerenciar candidatos.")
+        st.info("Cadastre uma vaga primeiro.")
 
 # --- 9. ABA: ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
