@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
 from datetime import datetime, date
 import os
@@ -132,97 +133,91 @@ elif menu == "⚙️ CANDIDATOS":
                     with c2:
                         st.write("**📁 Currículo do Candidato**")
                         uploaded_cv = st.file_uploader("Upload Currículo (PDF)", type="pdf", key=f"up{cr['id']}")
-                        
                         if uploaded_cv:
                             bytes_data = uploaded_cv.getvalue()
                             if st.button("💾 Salvar Arquivo PDF", key=f"save{cr['id']}"):
                                 try:
                                     with engine.begin() as conn:
                                         conn.execute(text("UPDATE candidatos SET arquivo_cv=:data WHERE id=:id"), {"data": bytes_data, "id": cr['id']})
-                                    st.success("Arquivo salvo com sucesso!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar: {e}")
+                                    st.success("Arquivo salvo com sucesso!"); st.rerun()
+                                except Exception as e: st.error(f"Erro: {e}")
 
                         if cr.get('arquivo_cv') is not None:
-                            st.download_button(
-                                label="📥 Baixar Currículo Atual",
-                                data=cr['arquivo_cv'],
-                                file_name=f"CV_{cr['candidato'].replace(' ', '_')}.pdf",
-                                mime="application/pdf",
-                                key=f"dl{cr['id']}"
-                            )
-                        else:
-                            st.info("Nenhum currículo anexado ainda.")
+                            st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", "application/pdf", key=f"dl{cr['id']}")
+                        else: st.info("Sem currículo anexado.")
 
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     df_c = carregar_dados("candidatos")
     aprovados = df_c[df_c['status_geral'] == 'Finalizada'] if not df_c.empty else pd.DataFrame()
-    if aprovados.empty:
-        st.info("Nenhum candidato na etapa 'Finalizada'.")
-    else:
-        for _, r in aprovados.iterrows():
-            with st.expander(f"🚀 {r['candidato']}"):
-                c1, c2, c3, c4 = st.columns(4)
-                p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"pro{r['id']}")
-                d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"doc{r['id']}")
-                c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"con{r['id']}")
-                a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"ace{r['id']}")
-                if st.button("Salvar Checklist", key=f"svon{r['id']}"):
-                    executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.rerun()
+    for _, r in aprovados.iterrows():
+        with st.expander(f"🚀 {r['candidato']}"):
+            c1, c2, c3, c4 = st.columns(4)
+            p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"pro{r['id']}")
+            d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"doc{r['id']}")
+            c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"con{r['id']}")
+            a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"ace{r['id']}")
+            if st.button("Salvar Checklist", key=f"svon{r['id']}"):
+                executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E ATUALIZADO) ---
+# --- 10. MÓDULO DASHBOARD DP (ATUALIZADO COM GRÁFICO DE CUMPRIMENTO) ---
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
-        # Conversão e Cálculos
         df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
+        df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
         hoje = pd.Timestamp(date.today())
         
-        # Lógica de Documentação Completa (Checa se todos os 4 pilares estão True)
-        df_est['doc_ok'] = (
-            (df_est['solic_contrato_dp'] == True) & 
-            (df_est['assina_etus'] == True) & 
-            (df_est['assina_faculdade'] == True) & 
-            (df_est['envio_juridico'] == True)
-        )
-
-        # Indicadores Principais
-        c1, c2, c3, c4 = st.columns(4)
-        total_est = len(df_est)
-        c1.metric("🎓 TOTAL ESTAGIÁRIOS", total_est)
-        
-        # Alerta de Vencimento em 30 dias
-        vencendo = df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)]
-        c2.metric("⚠️ VENCENDO (30 DIAS)", len(vencendo), delta_color="inverse")
-        
-        # Documentação OK vs Pendente
-        docs_ok = len(df_est[df_est['doc_ok'] == True])
+        # 1. Indicadores
+        c1, c2, c3 = st.columns(3)
+        c1.metric("🎓 TOTAL", len(df_est))
+        vencendo = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
+        c2.metric("⚠️ VENCENDO EM 30 DIAS", vencendo)
+        docs_ok = len(df_est[(df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)])
         c3.metric("✅ DOCS COMPLETOS", docs_ok)
-        c4.metric("🚨 PENDÊNCIAS", total_est - docs_ok)
 
         st.divider()
+        st.subheader("📊 % de Cumprimento de Contrato")
 
-        # Visualização Gráfica
-        g1, g2 = st.columns(2)
-        with g1:
-            st.subheader("🏢 Distribuição por Time")
-            st.plotly_chart(px.bar(df_est, x='time_equipe', color='time_equipe', color_discrete_sequence=['#8DF768', '#4CAF50']), use_container_width=True)
-        with g2:
-            st.subheader("📈 Status de Documentação")
-            status_counts = df_est['doc_ok'].map({True: 'Completo', False: 'Pendente'}).value_counts().reset_index()
-            st.plotly_chart(px.pie(status_counts, names='doc_ok', values='count', color='doc_ok', color_discrete_map={'Completo':'#8DF768', 'Pendente':'#FF4B4B'}), use_container_width=True)
+        # 2. Cálculo de Progresso e Cores
+        progressos = []
+        cores = []
+        for _, r in df_est.iterrows():
+            total_dias = (r['data_fim'] - r['data_inicio']).days
+            dias_passados = (hoje - r['data_inicio']).days
+            
+            # Garante limites entre 0 e 100%
+            perc = max(0, min(100, (dias_passados / total_dias * 100))) if total_dias > 0 else 0
+            progressos.append(round(perc, 1))
+            
+            # Lógica de Cor: Verde (Longe), Laranja (Perto), Vermelho (Vencendo/Vencido)
+            if perc >= 90: cores.append('#FF4B4B') # Vermelho
+            elif perc >= 70: cores.append('#FFA500') # Laranja
+            else: cores.append('#8DF768') # Verde
 
-        st.subheader("📋 Listagem Consolidada de Estagiários")
-        # Estilização da Tabela
-        df_display = df_est[['estagiario', 'time_equipe', 'data_fim', 'doc_ok']].copy()
-        df_display['data_fim'] = df_display['data_fim'].dt.strftime('%d/%m/%Y')
-        df_display['doc_ok'] = df_display['doc_ok'].map({True: '✅ OK', False: '❌ PENDENTE'})
-        st.table(df_display)
+        df_est['progresso'] = progressos
+        df_est['cor'] = cores
 
-    else:
-        st.info("Nenhum contrato de estagiário cadastrado para exibir no Dashboard.")
+        # 3. Gráfico de Barras Progressivo
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=df_est['estagiario'],
+            x=df_est['progresso'],
+            orientation='h',
+            marker_color=df_est['cor'],
+            text=df_est['progresso'].astype(str) + '%',
+            textposition='auto',
+            hovertemplate="<b>%{y}</b><br>Cumprido: %{x}%<extra></extra>"
+        ))
+        fig.update_layout(
+            xaxis=dict(title="Porcentagem Concluída", range=[0, 100]),
+            yaxis=dict(autorange="reversed"),
+            height=400 + (len(df_est) * 30), # Altura dinâmica baseada no número de estagiários
+            margin=dict(l=0, r=0, t=30, b=0)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    else: st.info("Sem dados de estagiários.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
