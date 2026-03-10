@@ -63,6 +63,20 @@ with engine.begin() as conn:
             status_dasa BOOLEAN DEFAULT FALSE, status_avus BOOLEAN DEFAULT FALSE, 
             status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE,
             status_equipamento BOOLEAN DEFAULT FALSE, ferias_vencimento DATE
+     with engine.begin() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS controle_experiencia (
+            id SERIAL PRIMARY KEY,
+            nome TEXT,
+            cargo TEXT,
+            time_equipe TEXT,
+            data_inicio DATE,
+            av1_feito BOOLEAN DEFAULT FALSE,
+            av1_data DATE,
+            av1_responsavel TEXT,
+            av2_feito BOOLEAN DEFAULT FALSE,
+            av2_data DATE,
+            av2_responsavel TEXT
         );
     """))
 
@@ -302,63 +316,78 @@ elif menu == "💸 OUTROS PAGAMENTOS":
 
 # --- 14. MÓDULO COLABORADORES (RESTANTE DA LISTA) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
-    st.subheader("Controle de Avaliação (45 e 90 dias)")
+    st.subheader("Gestão de Experiência e Avaliações")
     
-    df_colab = carregar_dados("colaboradores_ativos")
+    col_cad, col_gestao = st.columns([1, 2])
     
-    if not df_colab.empty:
-        # Garantir que a data de admissão é do tipo datetime
-        df_colab['data_admissao'] = pd.to_datetime(df_colab['data_admissao']).dt.date
-        hoje = date.today()
+    with col_cad:
+        st.markdown('<div class="vaga-header">➕ CADASTRAR NOVO PERÍODO</div>', unsafe_allow_html=True)
+        with st.form("f_exp_cad", clear_on_submit=True):
+            n_exp = st.text_input("Nome do Prestador/Estagiário")
+            c_exp = st.text_input("Cargo")
+            t_exp = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro", "Marketing"])
+            d_ini = st.date_input("Data de Início", value=date.today())
+            
+            # Cálculo visual antes de salvar
+            d45_prev = d_ini + pd.Timedelta(days=45)
+            d90_prev = d_ini + pd.Timedelta(days=90)
+            st.info(f"💡 Previsão 45 dias: {d45_prev.strftime('%d/%m/%Y')}\n\n💡 Previsão 90 dias: {d90_prev.strftime('%d/%m/%Y')}")
+            
+            if st.form_submit_button("CADASTRAR CONTROLE"):
+                if n_exp:
+                    executar_sql("""
+                        INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) 
+                        VALUES (:n, :c, :t, :d)
+                    """, {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
+                    st.success("Controle de experiência criado!"); st.rerun()
+
+    with col_gestao:
+        st.markdown('<div class="vaga-header">🔍 ACOMPANHAMENTO DE AVALIAÇÕES</div>', unsafe_allow_html=True)
+        df_exp = carregar_dados("controle_experiencia")
         
-        # Filtro de busca
-        busca = st.text_input("🔍 Buscar Colaborador", "").lower()
-        
-        for _, r in df_colab.iterrows():
-            if busca in r['nome'].lower():
-                # Cálculos de Experiência
-                data_adm = r['data_admissao']
-                data_45 = data_adm + pd.Timedelta(days=45)
-                data_90 = data_adm + pd.Timedelta(days=90)
+        if not df_exp.empty:
+            hoje = date.today()
+            for _, r in df_exp.iterrows():
+                # Cálculos automáticos baseados na data de início gravada
+                data_45 = r['data_inicio'] + pd.Timedelta(days=45)
+                data_90 = r['data_inicio'] + pd.Timedelta(days=90)
                 
-                # Lógica de Alerta (Cor)
-                # Se faltar menos de 7 dias para os 45 ou 90, ou se já passou e não foi marcado ok
-                dias_para_45 = (data_45 - hoje).days
-                dias_para_90 = (data_90 - hoje).days
-                
-                status_color = "#f0f2f6" # padrão
-                if 0 <= dias_para_45 <= 7 or 0 <= dias_para_90 <= 7:
-                    status_color = "rgba(255, 75, 75, 0.2)" # Alerta vermelho claro
-                
-                with st.container():
-                    st.markdown(f"""
-                        <div style="background-color:{status_color}; padding:15px; border-radius:10px; border-left: 5px solid #8DF768; margin-bottom:10px;">
-                            <h4 style="margin:0;">👤 {r['nome']}</h4>
-                            <small>Admissão: {data_adm.strftime('%d/%m/%Y')} | Tipo: {r['tipo']}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
+                # Definir cor de alerta se estiver vencendo e não foi feito
+                cor_borda = "#8DF768" # verde ok
+                if (not r['av1_feito'] and (data_45 - hoje).days <= 7) or (not r['av2_feito'] and (data_90 - hoje).days <= 7):
+                    cor_borda = "#FF4B4B" # vermelho alerta
+
+                with st.expander(f"👤 {r['nome']} - {r['cargo']} ({r['time_equipe']})"):
+                    st.markdown(f"<div style='border-left: 5px solid {cor_borda}; padding-left:10px;'><b>Início:</b> {r['data_inicio'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
                     
-                    c1, c2, c3 = st.columns([1, 1, 1])
+                    st.divider()
+                    c1, c2 = st.columns(2)
                     
                     with c1:
-                        st.write(f"**1ª Etapa (45 dias)**")
-                        st.write(f"📅 {data_45.strftime('%d/%m/%Y')}")
-                        if dias_para_45 < 0: st.error("Vencido")
-                        elif dias_para_45 <= 7: st.warning(f"Vence em {dias_para_45} dias")
+                        st.write(f"**1º Período (45 dias)**")
+                        st.write(f"📅 Previsto: `{data_45.strftime('%d/%m/%Y')}`")
+                        v1 = st.checkbox("Avaliação Realizada", value=bool(r['av1_feito']), key=f"v1_{r['id']}")
+                        resp1 = st.text_input("Responsável", value=r['av1_responsavel'] or "", key=f"r1_{r['id']}")
+                        dt1 = st.date_input("Data Realização", value=r['av1_data'] or hoje, key=f"dt1_{r['id']}")
                         
                     with c2:
-                        st.write(f"**2ª Etapa (90 dias)**")
-                        st.write(f"📅 {data_90.strftime('%d/%m/%Y')}")
-                        if dias_para_90 < 0: st.error("Vencido")
-                        elif dias_para_90 <= 7: st.warning(f"Vence em {dias_para_90} dias")
-                        
-                    with c3:
-                        st.write("**Ação**")
-                        if st.button("✅ Avaliação Realizada", key=f"av{r['id']}"):
-                            st.success("Avaliação registrada no histórico!")
-                    st.divider()
-    else:
-        st.info("Nenhum colaborador ativo encontrado para calcular experiência.")
-
-
+                        st.write(f"**2º Período (90 dias)**")
+                        st.write(f"📅 Previsto: `{data_90.strftime('%d/%m/%Y')}`")
+                        v2 = st.checkbox("Avaliação Realizada", value=bool(r['av2_feito']), key=f"v2_{r['id']}")
+                        resp2 = st.text_input("Responsável", value=r['av2_responsavel'] or "", key=f"r2_{r['id']}")
+                        dt2 = st.date_input("Data Realização", value=r['av2_data'] or hoje, key=f"dt2_{r['id']}")
+                    
+                    if st.button("💾 Salvar Avaliação", key=f"sv_exp_{r['id']}"):
+                        executar_sql("""
+                            UPDATE controle_experiencia SET 
+                            av1_feito=:v1, av1_data=:d1, av1_responsavel=:r1,
+                            av2_feito=:v2, av2_data=:d2, av2_responsavel=:r2
+                            WHERE id=:id
+                        """, {"v1":v1, "d1":dt1, "r1":resp1, "v2":v2, "d2":dt2, "r2":resp2, "id":r['id']})
+                        st.success("Atualizado com sucesso!"); st.rerun()
+                    
+                    if st.button("🗑️ Excluir Registro", key=f"del_exp_{r['id']}"):
+                        executar_sql("DELETE FROM controle_experiencia WHERE id=:id", {"id": r['id']}); st.rerun()
+        else:
+            st.info("Nenhum prestador em período de experiência cadastrado.")
 
