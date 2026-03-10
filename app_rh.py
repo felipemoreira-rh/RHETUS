@@ -386,8 +386,16 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
                         """, {"v1":v1, "d1":dt1, "r1":resp1, "v2":v2, "d2":dt2, "r2":resp2, "id":r['id']})
                         st.success("Atualizado com sucesso!"); st.rerun()
                     
-                    if st.button("🗑️ Excluir Registro", key=f"del_exp_{r['id']}"):
-                        executar_sql("DELETE FROM controle_experiencia WHERE id=:id", {"id": r['id']}); st.rerun()
+                 if st.button("💾 Salvar Avaliação", key=f"sv_exp_{r['id']}"):
+                        executar_sql("""
+                            UPDATE controle_experiencia 
+                            SET av1_feito=:v1, av1_data=:d1, av1_responsavel=:r1,
+                                av2_feito=:v2, av2_data=:d2, av2_responsavel=:r2
+                            WHERE id=:id
+                        """, {"v1":v1, "d1":dt1, "r1":resp1, "v2":v2, "d2":dt2, "r2":resp2, "id":r['id']})
+                        st.success("Atualizado com sucesso!")
+                        st.rerun()
         else:
             st.info("Nenhum prestador em período de experiência cadastrado.")
+
 
