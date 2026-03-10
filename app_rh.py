@@ -388,7 +388,7 @@ elif menu == "💸 OUTROS PAGAMENTOS":
                     st.download_button("📥 Baixar", r['arquivo_pg'], r['nome_arquivo'], key=f"dlpg{r['id']}")
                     if st.button("🗑️ Excluir", key=f"delpg{r['id']}"): executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id":r['id']}); st.rerun()
 
-# --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (COMPLETO) ---
+# --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (REFORMULADO E COMPLETO) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
     st.subheader("Controle de Avaliação de Experiência (90 dias)")
     col_cad, col_gst = st.columns([1, 2])
@@ -402,30 +402,53 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
             d_ini = st.date_input("Data de Início", value=date.today())
             if st.form_submit_button("CADASTRAR CONTROLE"):
                 if n_exp:
-                    executar_sql("INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) VALUES (:n, :c, :t, :d)", {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
+                    executar_sql("INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) VALUES (:n, :c, :t, :d)", 
+                                {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
                     st.success("Cadastrado!"); st.rerun()
 
     with col_gst:
         st.markdown('<div class="vaga-header">📋 GESTÃO DE AVALIAÇÕES (90 DIAS)</div>', unsafe_allow_html=True)
         df_exp = carregar_dados("controle_experiencia")
+        
         if not df_exp.empty:
             for _, r in df_exp.iterrows():
                 d90 = r['data_inicio'] + pd.Timedelta(days=90)
-                with st.expander(f"👤 {r['nome']} - Limite: {d90.strftime('%d/%m/%Y')}"):
+                # Status visual no título do expander
+                status_texto = "🟢 FINALIZADA" if r['av2_feito'] else "🟡 PENDENTE"
+                
+                with st.expander(f"{status_texto} | 👤 {r['nome']} | Limite: {d90.strftime('%d/%m/%Y')}"):
+                    # --- LINHA 1: CHECKBOX E DATA ---
                     c1, c2 = st.columns(2)
                     with c1:
-                        v2 = st.checkbox("Avaliação 90d Feita", value=bool(r['av2_feito']), key=f"v2{r['id']}")
-                        r2 = st.text_input("Avaliador Responsável", value=r['av2_responsavel'] or "", key=f"r2{r['id']}")
+                        v2 = st.checkbox("Avaliação feita", value=bool(r['av2_feito']), key=f"v2{r['id']}")
                     with c2:
-                        dt2 = st.date_input("Data da Realização", value=r['av2_data'] if r['av2_data'] else d90, key=f"dt2{r['id']}")
+                        dt2 = st.date_input("Data da realização", value=r['av2_data'] if r['av2_data'] else d90, key=f"dt2{r['id']}")
                     
-                    if st.button("💾 Salvar Avaliação", key=f"svexp{r['id']}"):
-                        executar_sql("UPDATE controle_experiencia SET av2_feito=:v2, av2_responsavel=:r2, av2_data=:dt2 WHERE id=:id", 
-                                    {"v2": v2, "r2": r2, "dt2": dt2, "id": r['id']})
-                        st.success("Salvo!"); st.rerun()
+                    # --- LINHA 2: AVALIADOR ---
+                    r2 = st.text_input("Avaliador responsável", value=r['av2_responsavel'] or "", key=f"r2{r['id']}", placeholder="Nome do gestor...")
                     
-                    if st.button("🗑️ Excluir", key=f"delexp{r['id']}"):
-                        executar_sql("DELETE FROM controle_experiencia WHERE id=:id", {"id": r['id']}); st.rerun()
+                    st.markdown("---")
+                    
+                    # --- LINHA 3: BOTÕES LADO A LADO ---
+                    col_btn_salvar, col_btn_excluir, col_filler = st.columns([1, 1, 1.5])
+                    
+                    with col_btn_salvar:
+                        if st.button("💾 Salvar Avaliação", key=f"svexp{r['id']}", use_container_width=True):
+                            executar_sql("""
+                                UPDATE controle_experiencia 
+                                SET av2_feito=:v2, av2_responsavel=:r2, av2_data=:dt2 
+                                WHERE id=:id
+                            """, {"v2": v2, "r2": r2, "dt2": dt2, "id": r['id']})
+                            st.success("Alterações salvas!")
+                            st.rerun()
+                            
+                    with col_btn_excluir:
+                        if st.button("🗑️ Excluir", key=f"delexp{r['id']}", use_container_width=True):
+                            executar_sql("DELETE FROM controle_experiencia WHERE id=:id", {"id": r['id']})
+                            st.warning("Registro removido.")
+                            st.rerun()
+        else:
+            st.info("Nenhum registro de experiência encontrado.")
 
 # --- 15. MÓDULO COLABORADORES ---
 elif menu == "👥 COLABORADORES":
@@ -471,6 +494,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
