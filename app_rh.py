@@ -47,16 +47,35 @@ def carregar_dados(tabela):
     except:
         return pd.DataFrame()
 
-# --- 4. BANCO DE DADOS (INIT COMPLETO) ---
+# --- 4. BANCO DE DADOS (INIT CORRIGIDO E SEPARADO) ---
 with engine.begin() as conn:
+    # Criar cada tabela em um comando separado para evitar OperationalError
+    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);"))
+    
+    conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);"))
+    
+    conn.execute(text("CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);"))
+    
+    conn.execute(text("CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);"))
+    
+    conn.execute(text("CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);"))
+    
+    conn.execute(text("CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, status_starbem BOOLEAN DEFAULT FALSE, status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE, status_equipamento BOOLEAN DEFAULT FALSE);"))
+    
     conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);
-        CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);
-        CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
-        CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);
-        CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);
-        CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, status_starbem BOOLEAN DEFAULT FALSE, status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE, status_equipamento BOOLEAN DEFAULT FALSE);
-        CREATE TABLE IF NOT EXISTS controle_experiencia (id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT);
+        CREATE TABLE IF NOT EXISTS controle_experiencia (
+            id SERIAL PRIMARY KEY, 
+            nome TEXT, 
+            cargo TEXT, 
+            time_equipe TEXT, 
+            data_inicio DATE, 
+            av1_feito BOOLEAN DEFAULT FALSE, 
+            av1_data DATE, 
+            av1_responsavel TEXT, 
+            av2_feito BOOLEAN DEFAULT FALSE, 
+            av2_data DATE, 
+            av2_responsavel TEXT
+        );
     """))
 
 # --- 5. SIDEBAR ---
@@ -252,3 +271,4 @@ elif menu == "👥 COLABORADORES":
     df_col = carregar_dados("colaboradores_ativos")
     if not df_col.empty:
         st.dataframe(df_col)
+
