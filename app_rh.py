@@ -161,18 +161,36 @@ elif menu == "🚀 ONBOARDING":
             if st.button("Salvar Checklist", key=f"svon{r['id']}"):
                 executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.success("Checklist Salvo!"); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP ---
+# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E COMPLETO) ---
 elif menu == "📊 DASHBOARD DP":
+    st.subheader("Indicadores de Departamento Pessoal")
+    
+    df_col = carregar_dados("colaboradores_ativos")
     df_est = carregar_dados("contratos_estagio")
-    if not df_est.empty:
-        df_est['data_fim'] = pd.to_datetime(df_est['data_fim']); df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio']); hoje = pd.Timestamp(date.today())
-        st.subheader("📊 % de Cumprimento de Contrato")
-        for _, r in df_est.iterrows():
-            total = (r['data_fim'] - r['data_inicio']).days
-            passado = (hoje - r['data_inicio']).days
-            perc = max(0, min(100, (passado / total * 100))) if total > 0 else 0
-            st.write(f"**{r['estagiario']}** ({round(perc,1)}%)")
-            st.progress(perc/100)
+    
+    if not df_col.empty:
+        # --- LINHA 1: MÉTRICAS GERAIS ---
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("👥 TOTAL ATIVOS", len(df_col))
+        c2.metric("👔 CLT/PJ", len(df_col[df_col['tipo'].isin(['CLT', 'PJ'])]))
+        c3.metric("🎓 ESTAGIÁRIOS", len(df_col[df_col['tipo'] == 'Estagiário']))
+        
+        # Cálculo de Benefícios Concluídos (Média de todos os campos booleanos)
+        check_cols = ['cad_starbem', 'incl_amil', 'ifood_ativo', 'equipamento_entregue']
+        # Garante que as colunas existem e calcula a média de preenchimento
+        total_checks = df_col[check_cols].sum().sum()
+        max_possible = len(df_col) * len(check_cols)
+        perc_beneficios = (total_checks / max_possible * 100) if max_possible > 0 else 0
+        c4.metric("✅ BENEFÍCIOS OK", f"{round(perc_beneficios, 1)}%")
+
+        st.divider()
+
+        # --- LINHA 2: GRÁFICOS ESTRATÉGICOS ---
+        col_graph1, col_graph2 = st.columns(2)
+        
+        with col_graph1:
+            st.markdown("**Distribuição por Tipo de Contrato**")
+            fig_tipo = px.pie(df_col, names='tipo', hole=0.4, color
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
@@ -305,3 +323,4 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['equipamento_entregue']), key=f"equi{r['id']}")
                 if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
+
