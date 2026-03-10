@@ -257,13 +257,13 @@ elif menu == "🍔 IFOOD":
 
 # --- 13. MÓDULO OUTROS PAGAMENTOS (NOVO) ---
 elif menu == "💸 OUTROS PAGAMENTOS":
-    st.subheader("Pagamentos PSB e Projeto MDP")
+    st.subheader("Pagamentos Plusdin, São Bernardo e Projeto")
     col_up, col_list = st.columns([1, 2])
     with col_up:
         with st.form("f_pg_geral", clear_on_submit=True):
-            emp_pg = st.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender"])
+            emp_pg = st.selectbox("Empresa", ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"])
             cat_pg = st.radio("Categoria", ["PSB", "MDP"], horizontal=True)
-            mes_pg = st.selectbox("Mês", "Ano" ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
+            mes_pg = st.selectbox("Mês", ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
             arq_pg = st.file_uploader("Arquivo (PDF)", type="pdf")
             if st.form_submit_button("SALVAR PAGAMENTO"):
                 if arq_pg:
@@ -297,4 +297,3 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['status_equipamento']), key=f"equi{r['id']}")
                 if st.button("Salvar Status", key=f"svcol{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET status_starbem=:s, status_amil=:a, status_ifood=:i, status_equipamento=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
-
