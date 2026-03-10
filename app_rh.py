@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
 from datetime import datetime, date
 import os
-from pypdf import PdfReader
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="logo.png")
@@ -16,7 +15,6 @@ st.markdown("""
     html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
     .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #8DF768; padding-left: 15px; }
     .vaga-header { background-color: rgba(141, 247, 104, 0.2); color: inherit; padding: 12px; border-radius: 8px; margin-top: 20px; margin-bottom: 10px; font-weight: bold; border-left: 5px solid #8DF768; }
-    .curriculo-box { background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #8DF768; color: #f0f0f0; margin-top: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -49,35 +47,16 @@ def carregar_dados(tabela):
     except:
         return pd.DataFrame()
 
-# --- 4. BANCO DE DADOS (INIT EXPANDIDO) ---
+# --- 4. BANCO DE DADOS (INIT COMPLETO) ---
 with engine.begin() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);
-        CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT, motivo_perda TEXT, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE, arquivo_cv BYTEA);
-        CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, status_contrato TEXT, time_equipe TEXT, funcao TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
+        CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);
+        CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
         CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);
         CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);
-        CREATE TABLE IF NOT EXISTS colaboradores_ativos (
-            id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, time_equipe TEXT, data_admissao DATE,
-            status_rh_gestor BOOLEAN DEFAULT FALSE, status_starbem BOOLEAN DEFAULT FALSE, 
-            status_dasa BOOLEAN DEFAULT FALSE, status_avus BOOLEAN DEFAULT FALSE, 
-            status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE,
-            status_equipamento BOOLEAN DEFAULT FALSE, ferias_vencimento DATE
-     with engine.begin() as conn:
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS controle_experiencia (
-            id SERIAL PRIMARY KEY,
-            nome TEXT,
-            cargo TEXT,
-            time_equipe TEXT,
-            data_inicio DATE,
-            av1_feito BOOLEAN DEFAULT FALSE,
-            av1_data DATE,
-            av1_responsavel TEXT,
-            av2_feito BOOLEAN DEFAULT FALSE,
-            av2_data DATE,
-            av2_responsavel TEXT
-        );
+        CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, status_starbem BOOLEAN DEFAULT FALSE, status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE, status_equipamento BOOLEAN DEFAULT FALSE);
+        CREATE TABLE IF NOT EXISTS controle_experiencia (id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT);
     """))
 
 # --- 5. SIDEBAR ---
@@ -85,12 +64,10 @@ with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
     area_sel = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal", "Financeiro & Notas"])
-    
     if area_sel == "RH - Recrutamento":
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
     elif area_sel == "DP - Departamento Pessoal":
-        # Removido 'Candidatos' e adicionado 'Experiência'
-        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "⏳ PERÍODO DE EXPERIÊNCIA"])
+        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES", "⏳ PERÍODO DE EXPERIÊNCIA"])
     else:
         menu = st.radio("NAVEGAÇÃO", ["🍔 IFOOD", "💸 OUTROS PAGAMENTOS"])
 
@@ -134,43 +111,23 @@ elif menu == "⚙️ CANDIDATOS":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     with st.expander("➕ NOVO CANDIDATO"):
         with st.form("nc"):
-            nc = st.text_input("Nome do Candidato")
-            opcoes_vagas = df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"]
-            vnc = st.selectbox("Vaga Vinculada", opcoes_vagas)
+            nc = st.text_input("Nome"); vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
             if st.form_submit_button("ADICIONAR"):
                 executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc}); st.rerun()
-
     if not df_c.empty:
-        vagas_unicas = df_c['vaga_vinculada'].unique()
-        for v_nome in vagas_unicas:
+        for v_nome in df_c['vaga_vinculada'].unique():
             st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
-            lista = df_c[df_c['vaga_vinculada'] == v_nome]
-            for _, cr in lista.iterrows():
-                with st.expander(f"👤 {cr['candidato']} — [ {cr['status_geral']} ]"):
+            for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
+                with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
                     c1, c2 = st.columns(2)
                     with c1:
-                        st.write("**📍 Gestão de Etapa**")
-                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
-                        idx = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
-                        ns = st.selectbox("Etapa", etapas, index=idx, key=f"s{cr['id']}")
+                        ns = st.selectbox("Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], index=0, key=f"s{cr['id']}")
                         if st.button("Salvar Etapa", key=f"b{cr['id']}"):
                             executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
-                        if st.button("🗑️ Excluir Candidato", key=f"d{cr['id']}"):
-                            executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']}); st.rerun()
                     with c2:
-                        st.write("**📁 Currículo do Candidato**")
-                        uploaded_cv = st.file_uploader("Upload Currículo (PDF)", type="pdf", key=f"up{cr['id']}")
-                        if uploaded_cv:
-                            bytes_data = uploaded_cv.getvalue()
-                            if st.button("💾 Salvar Arquivo PDF", key=f"save{cr['id']}"):
-                                try:
-                                    with engine.begin() as conn:
-                                        conn.execute(text("UPDATE candidatos SET arquivo_cv=:data WHERE id=:id"), {"data": bytes_data, "id": cr['id']})
-                                    st.success("Arquivo salvo!"); st.rerun()
-                                except Exception as e: st.error(f"Erro: {e}")
-                        if cr.get('arquivo_cv') is not None:
-                            st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", "application/pdf", key=f"dl{cr['id']}")
-                        else: st.info("Sem currículo anexado.")
+                        up_cv = st.file_uploader("Currículo", type="pdf", key=f"up{cr['id']}")
+                        if up_cv and st.button("💾 Salvar PDF", key=f"sv{cr['id']}"):
+                            executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']}); st.rerun()
 
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
@@ -179,223 +136,119 @@ elif menu == "🚀 ONBOARDING":
     for _, r in aprovados.iterrows():
         with st.expander(f"🚀 {r['candidato']}"):
             c1, c2, c3, c4 = st.columns(4)
-            p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"pro{r['id']}")
-            d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"doc{r['id']}")
-            c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"con{r['id']}")
-            a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"ace{r['id']}")
-            if st.button("Salvar Checklist", key=f"svon{r['id']}"):
-                executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.rerun()
+            p, d, c, a = c1.checkbox("Proposta", key=f"p{r['id']}"), c2.checkbox("Docs", key=f"d{r['id']}"), c3.checkbox("Contrato", key=f"c{r['id']}"), c4.checkbox("Acessos", key=f"a{r['id']}")
+            if st.button("Efetivar", key=f"ef{r['id']}"):
+                executar_sql("INSERT INTO colaboradores_ativos (nome, data_admissao) VALUES (:n, :da)", {"n":r['candidato'], "da":date.today()}); st.success("Efetivado!"); st.rerun()
 
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
-        df_est['data_fim'] = pd.to_datetime(df_est['data_fim'], errors='coerce')
-        df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'], errors='coerce')
-        hoje = pd.Timestamp(date.today())
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🎓 TOTAL ESTAGIÁRIOS", len(df_est))
-        vencendo = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
-        c2.metric("⚠️ VENCENDO EM 30 DIAS", vencendo)
-        df_est['doc_ok'] = (df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)
-        c3.metric("✅ DOCS COMPLETOS", len(df_est[df_est['doc_ok'] == True]))
-        st.divider()
-        g1, g2 = st.columns(2)
-        with g1:
-            st.subheader("🏢 Distribuição por Time")
-            st.plotly_chart(px.bar(df_est, x='time_equipe', color='time_equipe', color_discrete_sequence=['#8DF768', '#4CAF50']), use_container_width=True)
-        with g2:
-            st.subheader("📈 Status de Documentação")
-            status_counts = df_est['doc_ok'].map({True: 'Completo', False: 'Pendente'}).value_counts().reset_index()
-            st.plotly_chart(px.pie(status_counts, names='doc_ok', values='count', color_discrete_sequence=['#8DF768', '#FF4B4B']), use_container_width=True)
-        st.divider()
         st.subheader("📊 % de Cumprimento de Contrato")
-        progressos, cores = [], []
+        hoje = date.today()
         for _, r in df_est.iterrows():
-            total_dias = (r['data_fim'] - r['data_inicio']).days
-            dias_passados = (hoje - r['data_inicio']).days
-            perc = max(0, min(100, (dias_passados / total_dias * 100))) if total_dias > 0 else 0
-            progressos.append(round(perc, 1))
-            cores.append('#FF4B4B' if perc >= 90 else '#FFA500' if perc >= 70 else '#8DF768')
-        df_est['progresso'], df_est['cor'] = progressos, cores
-        fig = go.Figure(go.Bar(y=df_est['estagiario'], x=df_est['progresso'], orientation='h', marker_color=df_est['cor'], text=df_est['progresso'].astype(str) + '%', textposition='auto'))
-        fig.update_layout(xaxis=dict(range=[0, 100]), yaxis=dict(autorange="reversed"), height=300 + (len(df_est) * 35), margin=dict(l=0, r=0, t=30, b=0))
-        st.plotly_chart(fig, use_container_width=True)
-    else: st.info("Sem dados de estagiários.")
+            total = (r['data_fim'] - r['data_inicio']).days
+            passado = (hoje - r['data_inicio']).days
+            perc = max(0, min(100, (passado / total * 100))) if total > 0 else 0
+            st.write(f"**{r['estagiario']}**")
+            st.progress(perc/100)
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.subheader("📝 Novo Registro")
-        with st.form("f_est", clear_on_submit=True):
-            n, i, f = st.text_input("Nome"), st.text_input("Instituição"), st.text_input("Função")
-            t = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
-            di, df = st.date_input("Início"), st.date_input("Término")
+        with st.form("f_est"):
+            n, i = st.text_input("Nome"), st.text_input("Instituição")
+            di, df = st.date_input("Início"), st.date_input("Fim")
             if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, funcao, time_equipe, data_inicio, data_fim) VALUES (:n, :i, :f, :t, :di, :df)", {"n": n, "i": i, "f": f, "t": t, "di": di, "df": df}); st.rerun()
+                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, data_inicio, data_fim) VALUES (:n, :i, :di, :df)", {"n":n,"i":i,"di":di,"df":df}); st.rerun()
     with col2:
-        st.subheader("📋 Gestão")
         df_e = carregar_dados("contratos_estagio")
-        if not df_e.empty:
-            for _, r in df_e.iterrows():
-                with st.expander(f"👤 {r['estagiario']}"):
-                    ca, cb, cc, cd = st.columns(4)
-                    s, ae, af, ej = ca.checkbox("Solic.", value=bool(r.get('solic_contrato_dp')), key=f"sest{r['id']}"), cb.checkbox("ETUS", value=bool(r.get('assina_etus')), key=f"aeest{r['id']}"), cc.checkbox("Facul.", value=bool(r.get('assina_faculdade')), key=f"afest{r['id']}"), cd.checkbox("Jurid.", value=bool(r.get('envio_juridico')), key=f"ejest{r['id']}")
-                    if st.button("Salvar Checklist", key=f"svest{r['id']}"):
-                        executar_sql("UPDATE contratos_estagio SET solic_contrato_dp=:s, assina_etus=:ae, assina_faculdade=:af, envio_juridico=:ej WHERE id=:id", {"s":s,"ae":ae,"af":af,"ej":ej,"id":r['id']}); st.rerun()
-                    if st.button("🗑️ Excluir", key=f"dlest{r['id']}"):
-                        executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
+        for _, r in df_e.iterrows():
+            with st.expander(f"👤 {r['estagiario']}"):
+                if st.button("Excluir", key=f"delest{r['id']}"):
+                    executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
 
-# --- 12. MÓDULO IFOOD (FILTRO CORRIGIDO) ---
+# --- 12. MÓDULO IFOOD ---
 elif menu == "🍔 IFOOD":
-    st.subheader("Gestão de Notas iFood")
-    col_up, col_list = st.columns([1, 2])
-    
-    lista_empresas_ifood = ["ETUS", "BHAZ", "E3J", "Evolution", "No Name"]
-    
-    with col_up:
-        st.markdown('<div class="vaga-header">📤 UPLOAD NF IFOOD</div>', unsafe_allow_html=True)
-        with st.form("f_nf_ifood", clear_on_submit=True):
-            empresa_sel = st.selectbox("Empresa", lista_empresas_ifood)
-            mes_ref = st.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
-            arquivo_pdf = st.file_uploader("Upload NF (PDF)", type="pdf", key="up_ifood")
-            if st.form_submit_button("SALVAR NOTA FISCAL"):
-                if arquivo_pdf:
-                    executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:emp, :mes, :arq, :nom, :dat)", 
-                                {"emp": empresa_sel, "mes": mes_ref, "arq": arquivo_pdf.getvalue(), "nom": arquivo_pdf.name, "dat": date.today()})
-                    st.success("Nota iFood salva!"); st.rerun()
+    st.subheader("Gestão iFood")
+    lista_if = ["ETUS", "BHAZ", "E3J", "Evolution", "No Name"]
+    col_u, col_l = st.columns([1, 2])
+    with col_u:
+        with st.form("f_if"):
+            emp = st.selectbox("Empresa", lista_if)
+            mes = st.selectbox("Mês", ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
+            arq = st.file_uploader("NF PDF", type="pdf")
+            if st.form_submit_button("SALVAR"):
+                if arq: executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e,:m,:a,:n,:d)", {"e":emp,"m":mes,"a":arq.getvalue(),"n":arq.name,"d":date.today()}); st.rerun()
+    with col_l:
+        f = st.multiselect("Filtrar", lista_if, default=lista_if)
+        df = carregar_dados("notas_fiscais_ifood")
+        if not df.empty:
+            for _, r in df[df['empresa'].isin(f)].iterrows():
+                with st.expander(f"📄 {r['empresa']} - {r['mes_referencia']}"):
+                    st.download_button("Baixar", r['arquivo_nf'], r['nome_arquivo'], key=f"dlif{r['id']}")
 
-    with col_list:
-        st.markdown('<div class="vaga-header">🔍 FILTRAR NOTAS IFOOD</div>', unsafe_allow_html=True)
-        # Filtro exclusivo para iFood
-        filtro_if = st.multiselect("Empresas iFood", lista_empresas_ifood, default=lista_empresas_ifood)
-        
-        df_nf = carregar_dados("notas_fiscais_ifood")
-        if not df_nf.empty:
-            df_f = df_nf[df_nf['empresa'].isin(filtro_if)]
-            for _, row in df_f.iterrows():
-                with st.expander(f"📄 {row['empresa']} - {row['mes_referencia']}"):
-                    st.download_button("📥 Baixar", row['arquivo_nf'], row['nome_arquivo'], key=f"dlnf{row['id']}")
-                    if st.button("🗑️ Excluir", key=f"delnf{row['id']}"):
-                        executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id": row['id']}); st.rerun()
-
-# --- 13. MÓDULO OUTROS PAGAMENTOS (FILTRO CORRIGIDO) ---
+# --- 13. MÓDULO OUTROS PAGAMENTOS ---
 elif menu == "💸 OUTROS PAGAMENTOS":
     st.subheader("Pagamentos PSB/MDP")
-    col_up, col_list = st.columns([1, 2])
-    
-    lista_empresas_pg = ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"]
-    
-    with col_up:
-        st.markdown('<div class="vaga-header">📤 NOVO PAGAMENTO</div>', unsafe_allow_html=True)
-        with st.form("f_pg_geral", clear_on_submit=True):
-            emp_pg = st.selectbox("Empresa", lista_empresas_pg)
-            cat_pg = st.radio("Categoria", ["PSB", "MDP"], horizontal=True)
-            mes_pg = st.selectbox("Mês", ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
-            arq_pg = st.file_uploader("Arquivo (PDF)", type="pdf", key="up_pg_geral")
-            if st.form_submit_button("SALVAR PAGAMENTO"):
-                if arq_pg:
-                    executar_sql("INSERT INTO pagamentos_gerais (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload) VALUES (:emp, :cat, :mes, :arq, :nom, :dat)", 
-                                {"emp": emp_pg, "cat": cat_pg, "mes": mes_pg, "arq": arq_pg.getvalue(), "nom": arq_pg.name, "dat": date.today()})
-                    st.success("Pagamento salvo!"); st.rerun()
+    lista_pg = ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"]
+    col_u, col_l = st.columns([1, 2])
+    with col_u:
+        with st.form("f_pg"):
+            emp = st.selectbox("Empresa", lista_pg)
+            cat = st.radio("Categoria", ["PSB", "MDP"], horizontal=True)
+            mes = st.selectbox("Mês", ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
+            arq = st.file_uploader("PDF", type="pdf")
+            if st.form_submit_button("SALVAR"):
+                if arq: executar_sql("INSERT INTO pagamentos_gerais (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload) VALUES (:e,:c,:m,:a,:n,:d)", {"e":emp,"c":cat,"m":mes,"a":arq.getvalue(),"n":arq.name,"d":date.today()}); st.rerun()
+    with col_l:
+        f = st.multiselect("Filtrar", lista_pg, default=lista_pg)
+        df = carregar_dados("pagamentos_gerais")
+        if not df.empty:
+            for _, r in df[df['empresa'].isin(f)].iterrows():
+                with st.expander(f"💰 {r['empresa']} | {r['categoria']}"):
+                    st.download_button("Baixar", r['arquivo_pg'], r['nome_arquivo'], key=f"dlpg{r['id']}")
 
-    with col_list:
-        st.markdown('<div class="vaga-header">🔍 FILTRAR PAGAMENTOS</div>', unsafe_allow_html=True)
-        # Filtro exclusivo para Outros Pagamentos
-        filtro_pg = st.multiselect("Empresas Pagamentos", lista_empresas_pg, default=lista_empresas_pg)
-        
-        df_pg = carregar_dados("pagamentos_gerais")
-        if not df_pg.empty:
-            df_f_pg = df_pg[df_pg['empresa'].isin(filtro_pg)]
-            for _, r in df_f_pg.iterrows():
-                with st.expander(f"💰 {r['empresa']} | {r['categoria']} - {r['mes_referencia']}"):
-                    st.download_button("📥 Baixar", r['arquivo_pg'], r['nome_arquivo'], key=f"dlpg{r['id']}")
-                    if st.button("🗑️ Excluir", key=f"delpg{r['id']}"):
-                        executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id": r['id']}); st.rerun()
-
-# --- 14. MÓDULO COLABORADORES (RESTANTE DA LISTA) ---
+# --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (CORRIGIDO) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
-    st.subheader("Gestão de Experiência e Avaliações")
-    
-    col_cad, col_gestao = st.columns([1, 2])
-    
+    st.subheader("Gestão de Experiência")
+    col_cad, col_gst = st.columns([1, 2])
     with col_cad:
-        st.markdown('<div class="vaga-header">➕ CADASTRAR NOVO PERÍODO</div>', unsafe_allow_html=True)
+        st.markdown('<div class="vaga-header">➕ CADASTRAR</div>', unsafe_allow_html=True)
         with st.form("f_exp_cad", clear_on_submit=True):
-            n_exp = st.text_input("Nome do Prestador/Estagiário")
+            n_exp = st.text_input("Nome")
             c_exp = st.text_input("Cargo")
-            t_exp = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro", "Marketing"])
-            d_ini = st.date_input("Data de Início", value=date.today())
-            
-            # Cálculo visual antes de salvar
-            d45_prev = d_ini + pd.Timedelta(days=45)
-            d90_prev = d_ini + pd.Timedelta(days=90)
-            st.info(f"💡 Previsão 45 dias: {d45_prev.strftime('%d/%m/%Y')}\n\n💡 Previsão 90 dias: {d90_prev.strftime('%d/%m/%Y')}")
-            
-            if st.form_submit_button("CADASTRAR CONTROLE"):
-                if n_exp:
-                    executar_sql("""
-                        INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) 
-                        VALUES (:n, :c, :t, :d)
-                    """, {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
-                    st.success("Controle de experiência criado!"); st.rerun()
-
-    with col_gestao:
-        st.markdown('<div class="vaga-header">🔍 ACOMPANHAMENTO DE AVALIAÇÕES</div>', unsafe_allow_html=True)
+            t_exp = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
+            d_ini = st.date_input("Início", value=date.today())
+            if st.form_submit_button("CADASTRAR"):
+                executar_sql("INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) VALUES (:n, :c, :t, :d)", {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
+                st.rerun()
+    with col_gst:
         df_exp = carregar_dados("controle_experiencia")
-        
         if not df_exp.empty:
-            hoje = date.today()
             for _, r in df_exp.iterrows():
-                # Cálculos automáticos baseados na data de início gravada
-                data_45 = r['data_inicio'] + pd.Timedelta(days=45)
-                data_90 = r['data_inicio'] + pd.Timedelta(days=90)
-                
-                # Definir cor de alerta se estiver vencendo e não foi feito
-                cor_borda = "#8DF768" # verde ok
-                if (not r['av1_feito'] and (data_45 - hoje).days <= 7) or (not r['av2_feito'] and (data_90 - hoje).days <= 7):
-                    cor_borda = "#FF4B4B" # vermelho alerta
-
-                with st.expander(f"👤 {r['nome']} - {r['cargo']} ({r['time_equipe']})"):
-                    st.markdown(f"<div style='border-left: 5px solid {cor_borda}; padding-left:10px;'><b>Início:</b> {r['data_inicio'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
-                    
-                    st.divider()
+                d45 = r['data_inicio'] + pd.Timedelta(days=45)
+                d90 = r['data_inicio'] + pd.Timedelta(days=90)
+                with st.expander(f"👤 {r['nome']} ({r['time_equipe']})"):
                     c1, c2 = st.columns(2)
-                    
                     with c1:
-                        st.write(f"**1º Período (45 dias)**")
-                        st.write(f"📅 Previsto: `{data_45.strftime('%d/%m/%Y')}`")
-                        v1 = st.checkbox("Avaliação Realizada", value=bool(r['av1_feito']), key=f"v1_{r['id']}")
-                        resp1 = st.text_input("Responsável", value=r['av1_responsavel'] or "", key=f"r1_{r['id']}")
-                        dt1 = st.date_input("Data Realização", value=r['av1_data'] or hoje, key=f"dt1_{r['id']}")
-                        
+                        st.write(f"**1º Período (45d): {d45.strftime('%d/%m/%Y')}**")
+                        v1 = st.checkbox("Feito", value=bool(r['av1_feito']), key=f"v1{r['id']}")
+                        r1 = st.text_input("Responsável", value=r['av1_responsavel'] or "", key=f"r1{r['id']}")
                     with c2:
-                        st.write(f"**2º Período (90 dias)**")
-                        st.write(f"📅 Previsto: `{data_90.strftime('%d/%m/%Y')}`")
-                        v2 = st.checkbox("Avaliação Realizada", value=bool(r['av2_feito']), key=f"v2_{r['id']}")
-                        resp2 = st.text_input("Responsável", value=r['av2_responsavel'] or "", key=f"r2_{r['id']}")
-                        dt2 = st.date_input("Data Realização", value=r['av2_data'] or hoje, key=f"dt2_{r['id']}")
+                        st.write(f"**2º Período (90d): {d90.strftime('%d/%m/%Y')}**")
+                        v2 = st.checkbox("Feito", value=bool(r['av2_feito']), key=f"v2{r['id']}")
+                        r2 = st.text_input("Responsável", value=r['av2_responsavel'] or "", key=f"r2{r['id']}")
                     
-                    if st.button("💾 Salvar Avaliação", key=f"sv_exp_{r['id']}"):
-                        executar_sql("""
-                            UPDATE controle_experiencia SET 
-                            av1_feito=:v1, av1_data=:d1, av1_responsavel=:r1,
-                            av2_feito=:v2, av2_data=:d2, av2_responsavel=:r2
-                            WHERE id=:id
-                        """, {"v1":v1, "d1":dt1, "r1":resp1, "v2":v2, "d2":dt2, "r2":resp2, "id":r['id']})
-                        st.success("Atualizado com sucesso!"); st.rerun()
-                    
-                 if st.button("💾 Salvar Avaliação", key=f"sv_exp_{r['id']}"):
-                        executar_sql("""
-                            UPDATE controle_experiencia 
-                            SET av1_feito=:v1, av1_data=:d1, av1_responsavel=:r1,
-                                av2_feito=:v2, av2_data=:d2, av2_responsavel=:r2
-                            WHERE id=:id
-                        """, {"v1":v1, "d1":dt1, "r1":resp1, "v2":v2, "d2":dt2, "r2":resp2, "id":r['id']})
-                        st.success("Atualizado com sucesso!")
-                        st.rerun()
-        else:
-            st.info("Nenhum prestador em período de experiência cadastrado.")
+                    # CORREÇÃO DA SINTAXE SQL AQUI
+                    if st.button("Salvar Avaliação", key=f"sv_exp_{r['id']}"):
+                        executar_sql("UPDATE controle_experiencia SET av1_feito=:v1, av1_responsavel=:r1, av2_feito=:v2, av2_responsavel=:r2 WHERE id=:id", 
+                                    {"v1": v1, "r1": r1, "v2": v2, "r2": r2, "id": r['id']})
+                        st.success("Salvo!"); st.rerun()
 
-
+# --- 15. MÓDULO COLABORADORES ---
+elif menu == "👥 COLABORADORES":
+    df_col = carregar_dados("colaboradores_ativos")
+    if not df_col.empty:
+        st.dataframe(df_col)
