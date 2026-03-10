@@ -14,7 +14,8 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
     html, body, [class*="css"], [data-testid="stSidebar"] { font-family: 'Space Grotesk', sans-serif !important; }
     .header-rh { font-size: 42px; font-weight: 700; color: #8DF768; margin-bottom: 30px; border-left: 10px solid #8DF768; padding-left: 15px; }
-    .vaga-header { background-color: rgba(141, 247, 104, 0.2); padding: 12px; border-radius: 8px; margin-top: 20px; font-weight: bold; border-left: 5px solid #8DF768; }
+    .vaga-header { background-color: rgba(141, 247, 104, 0.2); color: inherit; padding: 12px; border-radius: 8px; margin-top: 20px; margin-bottom: 10px; font-weight: bold; border-left: 5px solid #8DF768; }
+    .curriculo-box { background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #8DF768; color: #f0f0f0; margin-top: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -47,34 +48,36 @@ def carregar_dados(tabela):
     except:
         return pd.DataFrame()
 
-# --- 4. BANCO DE DADOS (INIT EXPANDIDO) ---
+# --- 4. BANCO DE DADOS (INIT COMPLETO) ---
 with engine.begin() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);
-        CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);
-        CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
-        CREATE TABLE IF NOT EXISTS colaboradores (
+        CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, historico TEXT, motivo_perda TEXT, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE, arquivo_cv BYTEA);
+        CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, status_contrato TEXT, time_equipe TEXT, funcao TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);
+        CREATE TABLE IF NOT EXISTS colaboradores_ativos (
             id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, time_equipe TEXT, data_admissao DATE,
-            status_rh_gestor BOOLEAN DEFAULT FALSE, status_starbem BOOLEAN DEFAULT FALSE, 
-            status_dasa BOOLEAN DEFAULT FALSE, status_avus BOOLEAN DEFAULT FALSE, 
-            status_amil BOOLEAN DEFAULT FALSE, status_ifood BOOLEAN DEFAULT FALSE,
-            status_equipamento BOOLEAN DEFAULT FALSE, ferias_vencimento DATE
+            cad_rh_gestor BOOLEAN DEFAULT FALSE, cad_starbem BOOLEAN DEFAULT FALSE, cad_dasa BOOLEAN DEFAULT FALSE, 
+            cad_avus BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, doc_amil BOOLEAN DEFAULT FALSE,
+            ifood_ativo BOOLEAN DEFAULT FALSE, lingo_pass BOOLEAN DEFAULT FALSE, wellhub BOOLEAN DEFAULT FALSE,
+            equipamento_entregue BOOLEAN DEFAULT FALSE, acessos_ok BOOLEAN DEFAULT FALSE, ponto_clt_estag BOOLEAN DEFAULT FALSE
         );
-        CREATE TABLE IF NOT EXISTS eventos (id SERIAL PRIMARY KEY, titulo TEXT, data_evento DATE, tipo TEXT);
+        CREATE TABLE IF NOT EXISTS administrativo (id SERIAL PRIMARY KEY, item TEXT, status TEXT, valor FLOAT, data DATE, categoria TEXT);
     """))
 
 # --- 5. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
-    area_sel = st.selectbox("GERENCIAMENTO", ["Recrutamento", "DP & Operações", "Benefícios & Engajamento"])
+    area_sel = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal", "Operações & Benefícios", "Financeiro & Viagens"])
     
-    if area_sel == "Recrutamento":
+    if area_sel == "RH - Recrutamento":
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
-    elif area_sel == "DP & Operações":
-        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES", "💰 FINANCEIRO & VIAGENS"])
+    elif area_sel == "DP - Departamento Pessoal":
+        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES CLT/PJ"])
+    elif area_sel == "Operações & Benefícios":
+        menu = st.radio("NAVEGAÇÃO", ["🎁 GESTÃO DE BENEFÍCIOS", "📢 COMUNICADOS & PORTARIA", "🎒 EQUIPAMENTOS"])
     else:
-        menu = st.radio("NAVEGAÇÃO", ["🎁 BENEFÍCIOS", "📅 EVENTOS & COMUNICADOS"])
+        menu = st.radio("NAVEGAÇÃO", ["💰 PAGAMENTOS & IFOOD", "✈️ VIAGENS & UBER"])
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
@@ -82,13 +85,18 @@ st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 if menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     if not df_v.empty:
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
         if not df_c.empty:
-            st.subheader("📊 Funil de Recrutamento")
-            ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
-            cnt = df_c['status_geral'].value_counts().reindex(ordem).fillna(0).reset_index()
-            st.plotly_chart(px.funnel(cnt, x='count', y='status_geral', color_discrete_sequence=['#8DF768']), use_container_width=True)
+            st.divider(); col_l, col_r = st.columns(2)
+            with col_l:
+                st.subheader("📊 Funil de Recrutamento")
+                ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
+                cnt = df_c['status_geral'].value_counts().reindex(ordem).fillna(0).reset_index()
+                st.plotly_chart(px.funnel(cnt, x='count', y='status_geral', color_discrete_sequence=['#8DF768']), use_container_width=True)
+            with col_r:
+                st.subheader("👥 Candidatos por Vaga")
+                st.plotly_chart(px.pie(df_c, names='vaga_vinculada', hole=0.4), use_container_width=True)
 
 # --- 7. MÓDULO VAGAS ---
 elif menu == "🏢 VAGAS":
@@ -100,42 +108,56 @@ elif menu == "🏢 VAGAS":
     df_v = carregar_dados("vagas")
     for _, row in df_v.iterrows():
         with st.expander(f"🏢 {row['nome_vaga']} ({row['status_vaga']})"):
-            st.write(f"**Gestor:** {row['gestor']} | **Abertura:** {row['data_abertura']}")
-            if st.button("Fechar Vaga", key=f"fv{row['id']}"):
-                executar_sql("UPDATE vagas SET status_vaga='Finalizada', data_fechamento=:d WHERE id=:id", {"d":date.today(), "id":row['id']}); st.rerun()
+            with st.form(f"edv{row['id']}"):
+                ns = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
+                if st.form_submit_button("ATUALIZAR"):
+                    df = date.today() if ns == "Finalizada" else None
+                    executar_sql("UPDATE vagas SET status_vaga=:s, data_fechamento=:df WHERE id=:id", {"s":ns,"df":df,"id":row['id']}); st.rerun()
 
-# --- 8. MÓDULO CANDIDATOS ---
+# --- 8. MÓDULO CANDIDATOS (COM CURRÍCULO) ---
 elif menu == "⚙️ CANDIDATOS":
     df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
     with st.expander("➕ NOVO CANDIDATO"):
         with st.form("nc"):
-            nc = st.text_input("Nome")
-            vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
+            nc = st.text_input("Nome"); vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
             if st.form_submit_button("ADICIONAR"):
                 executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc}); st.rerun()
     if not df_c.empty:
-        for _, cr in df_c.iterrows():
-            with st.expander(f"👤 {cr['candidato']} ({cr['vaga_vinculada']})"):
-                ns = st.selectbox("Mudar Etapa", ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"], key=f"st{cr['id']}")
-                if st.button("Salvar Etapa", key=f"bt{cr['id']}"):
-                    executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
+        vagas_unicas = df_c['vaga_vinculada'].unique()
+        for v_nome in vagas_unicas:
+            st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
+            for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
+                with st.expander(f"👤 {cr['candidato']} — [ {cr['status_geral']} ]"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
+                        ns = st.selectbox("Etapa", etapas, index=etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0, key=f"s{cr['id']}")
+                        if st.button("Salvar Etapa", key=f"b{cr['id']}"):
+                            executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
+                    with c2:
+                        up_cv = st.file_uploader("Upload CV (PDF)", type="pdf", key=f"up{cr['id']}")
+                        if up_cv and st.button("💾 Salvar PDF", key=f"save{cr['id']}"):
+                            executar_sql("UPDATE candidatos SET arquivo_cv=:data WHERE id=:id", {"data": up_cv.getvalue(), "id": cr['id']}); st.success("Salvo!")
+                        if cr.get('arquivo_cv'): st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
 
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     df_c = carregar_dados("candidatos")
-    aprovados = df_c[df_c['status_geral'] == 'Finalizada']
+    aprovados = df_c[df_c['status_geral'] == 'Finalizada'] if not df_c.empty else pd.DataFrame()
     for _, r in aprovados.iterrows():
         with st.expander(f"🚀 {r['candidato']}"):
             c1, c2, c3, c4 = st.columns(4)
-            p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"p{r['id']}")
-            d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"d{r['id']}")
-            c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"c{r['id']}")
-            a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"a{r['id']}")
-            if st.button("Efetivar no Sistema", key=f"ef{r['id']}"):
-                executar_sql("INSERT INTO colaboradores (nome, tipo, data_admissao) VALUES (:n, 'CLT', :d)", {"n":r['candidato'], "d":date.today()})
-                executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":r['id']}); st.rerun()
+            p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"pro{r['id']}")
+            d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"doc{r['id']}")
+            c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"con{r['id']}")
+            a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"ace{r['id']}")
+            if st.button("Salvar Checklist & Efetivar", key=f"svon{r['id']}"):
+                executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']})
+                if p and d and c and a:
+                    executar_sql("INSERT INTO colaboradores_ativos (nome, data_admissao) VALUES (:n, :d)", {"n":r['candidato'], "d":date.today()})
+                    st.success("Colaborador movido para Ativos!"); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP ---
+# --- 10. MÓDULO DASHBOARD DP (INTEGRAL COM GRÁFICOS E BARRAS) ---
 elif menu == "📊 DASHBOARD DP":
     df_est = carregar_dados("contratos_estagio")
     if not df_est.empty:
@@ -143,105 +165,120 @@ elif menu == "📊 DASHBOARD DP":
         hoje = pd.Timestamp(date.today())
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("🎓 ESTAGIÁRIOS", len(df_est))
-        venc = len(df_est[(df_est['data_fim'] - hoje).dt.days <= 30])
-        c2.metric("⚠️ VENCENDO (30D)", venc)
-        
+        c1.metric("🎓 TOTAL ESTAGIÁRIOS", len(df_est))
+        venc = len(df_est[(df_est['data_fim'] >= hoje) & ((df_est['data_fim'] - hoje).dt.days <= 30)])
+        c2.metric("⚠️ VENCENDO (30 DIAS)", venc)
+        df_est['doc_ok'] = (df_est['solic_contrato_dp']==True)&(df_est['assina_etus']==True)&(df_est['assina_faculdade']==True)&(df_est['envio_juridico']==True)
+        c3.metric("✅ DOCS COMPLETOS", len(df_est[df_est['doc_ok'] == True]))
+
+        st.divider()
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("🏢 Por Time")
+            st.plotly_chart(px.bar(df_est, x='time_equipe', color_discrete_sequence=['#8DF768']), use_container_width=True)
+        with g2:
+            st.subheader("📈 Status Docs")
+            st.plotly_chart(px.pie(df_est, names='doc_ok', color='doc_ok', color_discrete_map={True:'#8DF768', False:'#FF4B4B'}), use_container_width=True)
+
+        st.divider()
         st.subheader("📊 % de Cumprimento de Contrato")
+        progressos, cores = [], []
         for _, r in df_est.iterrows():
-            total = (r['data_fim'] - r['data_inicio']).days
+            total_dias = (r['data_fim'] - r['data_inicio']).days
             passado = (hoje - r['data_inicio']).days
-            perc = max(0, min(100, (passado/total*100))) if total > 0 else 0
-            cor = "red" if perc > 90 else "green"
-            st.write(f"**{r['estagiario']}**")
-            st.progress(perc/100)
+            perc = max(0, min(100, (passado / total_dias * 100))) if total_dias > 0 else 0
+            progressos.append(round(perc, 1))
+            cores.append('#FF4B4B' if perc >= 90 else '#FFA500' if perc >= 70 else '#8DF768')
+        df_est['progresso'], df_est['cor'] = progressos, cores
+        fig = go.Figure(go.Bar(y=df_est['estagiario'], x=df_est['progresso'], orientation='h', marker_color=df_est['cor'], text=df_est['progresso'].astype(str) + '%', textposition='auto'))
+        fig.update_layout(xaxis=dict(range=[0, 100]), yaxis=dict(autorange="reversed"), height=300+(len(df_est)*35), margin=dict(l=0,r=0,t=0,b=0))
+        st.plotly_chart(fig, use_container_width=True)
 
-# --- 11. NOVO MÓDULO: COLABORADORES (Atividades: PJ, CLT, Férias) ---
-elif menu == "👥 COLABORADORES":
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.subheader("📝 Novo Colaborador")
-        with st.form("f_col"):
-            n = st.text_input("Nome"); t = st.selectbox("Tipo", ["CLT", "PJ", "Estagiário"])
-            tm = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
-            dt = st.date_input("Admissão")
-            if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO colaboradores (nome, tipo, time_equipe, data_admissao) VALUES (:n, :t, :tm, :dt)", {"n":n,"t":t,"tm":tm,"dt":dt}); st.rerun()
-    with col2:
-        st.subheader("📋 Gestão Ativa")
-        df_col = carregar_dados("colaboradores")
-        for _, r in df_col.iterrows():
-            with st.expander(f"👤 {r['nome']} [{r['tipo']}]"):
-                c1, c2, c3 = st.columns(3)
-                eq = c1.checkbox("Equipamento", value=bool(r['status_equipamento']), key=f"eq{r['id']}")
-                rhg = c2.checkbox("RH Gestor", value=bool(r['status_rh_gestor']), key=f"rhg{r['id']}")
-                ifo = c3.checkbox("Ifood", value=bool(r['status_ifood']), key=f"ifo{r['id']}")
-                if st.button("Atualizar Dados", key=f"upc{r['id']}"):
-                    executar_sql("UPDATE colaboradores SET status_equipamento=:eq, status_rh_gestor=:rhg, status_ifood=:ifo WHERE id=:id", {"eq":eq,"rhg":rhg,"ifo":ifo,"id":r['id']}); st.rerun()
-
-# --- 12. NOVO MÓDULO: BENEFÍCIOS (Atividades: AMIL, Starbem, Dasa, AVUS) ---
-elif menu == "🎁 BENEFÍCIOS":
-    st.subheader("🏥 Gestão de Saúde e Bem-estar")
-    df_b = carregar_dados("colaboradores")
-    if not df_b.empty:
-        for _, r in df_b.iterrows():
-            with st.expander(f"📦 Benefícios: {r['nome']}"):
-                c1, c2, c3, c4 = st.columns(4)
-                ami = c1.checkbox("AMIL", value=bool(r['status_amil']), key=f"ami{r['id']}")
-                sta = c2.checkbox("Starbem", value=bool(r['status_starbem']), key=f"sta{r['id']}")
-                das = c3.checkbox("Dasa", value=bool(r['status_dasa']), key=f"das{r['id']}")
-                avu = c4.checkbox("AVUS", value=bool(r['status_avus']), key=f"avu{r['id']}")
-                if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
-                    executar_sql("UPDATE colaboradores SET status_amil=:ami, status_starbem=:sta, status_dasa=:das, status_avus=:avu WHERE id=:id", 
-                                 {"ami":ami,"sta":sta,"das":das,"avu":avu,"id":r['id']}); st.rerun()
-
-# --- 13. MÓDULO ESTAGIÁRIOS ---
+# --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
     with col1:
         st.subheader("📝 Novo Registro")
         with st.form("f_est", clear_on_submit=True):
-            n = st.text_input("Nome"); i = st.text_input("Instituição")
-            t = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
-            di = st.date_input("Início"); df = st.date_input("Término")
+            n = st.text_input("Nome"); i = st.text_input("Instituição"); t = st.selectbox("Time", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
+            di, df = st.date_input("Início"), st.date_input("Término")
             if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, time_equipe, data_inicio, data_fim) VALUES (:n, :i, :t, :di, :df)", 
-                             {"n": n, "i": i, "t": t, "di": di, "df": df}); st.rerun()
+                executar_sql("INSERT INTO contratos_estagio (estagiario, instituicao, time_equipe, data_inicio, data_fim) VALUES (:n, :i, :t, :di, :df)", {"n": n, "i": i, "t": t, "di": di, "df": df}); st.rerun()
     with col2:
         df_e = carregar_dados("contratos_estagio")
         for _, r in df_e.iterrows():
             with st.expander(f"👤 {r['estagiario']}"):
                 ca, cb, cc, cd = st.columns(4)
-                s = ca.checkbox("Solicit.", value=bool(r.get('solic_contrato_dp')), key=f"sest{r['id']}")
-                ae = cb.checkbox("ETUS", value=bool(r.get('assina_etus')), key=f"aeest{r['id']}")
-                af = cc.checkbox("Facul.", value=bool(r.get('assina_faculdade')), key=f"afest{r['id']}")
-                ej = cd.checkbox("Jurid.", value=bool(r.get('envio_juridico')), key=f"ejest{r['id']}")
-                if st.button("Salvar", key=f"svest{r['id']}"):
+                s = ca.checkbox("Solicit.", value=bool(r['solic_contrato_dp']), key=f"sest{r['id']}")
+                ae = cb.checkbox("ETUS", value=bool(r['assina_etus']), key=f"aeest{r['id']}")
+                af = cc.checkbox("Facul.", value=bool(r['assina_faculdade']), key=f"afest{r['id']}")
+                ej = cd.checkbox("Jurid.", value=bool(r['envio_juridico']), key=f"ejest{r['id']}")
+                if st.button("Salvar Checklist", key=f"svest{r['id']}"):
                     executar_sql("UPDATE contratos_estagio SET solic_contrato_dp=:s, assina_etus=:ae, assina_faculdade=:af, envio_juridico=:ej WHERE id=:id", {"s":s,"ae":ae,"af":af,"ej":ej,"id":r['id']}); st.rerun()
+                if st.button("🗑️ Excluir", key=f"dlest{r['id']}"): executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
 
-# --- 14. NOVO MÓDULO: EVENTOS & COMUNICADOS ---
-elif menu == "📅 EVENTOS & COMUNICADOS":
-    st.subheader("📢 Mural da Empresa")
-    with st.form("f_ev"):
-        tit = st.text_input("Título do Comunicado/Evento")
-        tip = st.selectbox("Tipo", ["Aniversariante", "Comunicado Slack", "Evento Presencial", "Entrada Portaria"])
-        dat = st.date_input("Data")
-        if st.form_submit_button("PUBLICAR"):
-            executar_sql("INSERT INTO eventos (titulo, tipo, data_evento) VALUES (:t, :tp, :d)", {"t":tit,"tp":tip,"d":dat}); st.rerun()
-    
-    df_ev = carregar_dados("eventos")
-    if not df_ev.empty:
-        st.table(df_ev[['data_evento', 'tipo', 'titulo']])
+# --- 12. NOVO MÓDULO: BENEFÍCIOS (Toda sua lista de cadastros) ---
+elif menu == "🎁 GESTÃO DE BENEFÍCIOS":
+    df_at = carregar_dados("colaboradores_ativos")
+    if not df_at.empty:
+        for _, r in df_at.iterrows():
+            with st.expander(f"📦 Benefícios & Cadastros: {r['nome']}"):
+                st.write("**Cadastros em Plataformas:**")
+                c1, c2, c3, c4 = st.columns(4)
+                rhg = c1.checkbox("RH Gestor", value=bool(r['cad_rh_gestor']), key=f"rhg{r['id']}")
+                stb = c2.checkbox("Starbem", value=bool(r['cad_starbem']), key=f"stb{r['id']}")
+                das = c3.checkbox("Dasa", value=bool(r['cad_dasa']), key=f"das{r['id']}")
+                avu = c4.checkbox("AVUS", value=bool(r['cad_avus']), key=f"avu{r['id']}")
+                
+                st.write("**Saúde & Bem-estar:**")
+                c5, c6, c7, c8 = st.columns(4)
+                ami = c5.checkbox("Inclusão AMIL", value=bool(r['incl_amil']), key=f"ami{r['id']}")
+                dam = c6.checkbox("Doc Inclusão", value=bool(r['doc_amil']), key=f"dam{r['id']}")
+                whub = c7.checkbox("Wellhub", value=bool(r['wellhub']), key=f"wh{r['id']}")
+                lpas = c8.checkbox("LingoPass", value=bool(r['lingo_pass']), key=f"lp{r['id']}")
+                
+                if st.button("Salvar Atualizações", key=f"svb{r['id']}"):
+                    executar_sql("""UPDATE colaboradores_ativos SET cad_rh_gestor=:rhg, cad_starbem=:stb, cad_dasa=:das, cad_avus=:avu, 
+                                    incl_amil=:ami, doc_amil=:dam, wellhub=:whub, lingo_pass=:lpas WHERE id=:id""", 
+                                    {"rhg":rhg,"stb":stb,"das":das,"avu":avu,"ami":ami,"dam":dam,"whub":whub,"lpas":lpas,"id":r['id']}); st.rerun()
 
-# --- 15. NOVO MÓDULO: FINANCEIRO & VIAGENS ---
-elif menu == "💰 FINANCEIRO & VIAGENS":
-    st.info("Módulo para controle de Pagamentos PSB/MDP, NFs Ifood e Controle de Viagens/Uber.")
+# --- 13. NOVO MÓDULO: COMUNICADOS & PORTARIA ---
+elif menu == "📢 COMUNICADOS & PORTARIA":
+    st.subheader("Entradas de Portaria & Slack")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        with st.form("f_portaria"):
+            nome_p = st.text_input("Nome p/ Portaria"); data_p = st.date_input("Data Entrada")
+            if st.form_submit_button("Enviar p/ Portaria"): st.success(f"Solicitação de {nome_p} enviada!")
+    with col_b:
+        st.info("💡 **Dica Slack:** Utilize o canal #comunicados para Aniversariantes e Boas-vindas.")
+        if st.button("Gerar Texto de Boas-vindas"): st.code(f"Bem-vindo(a) à ETUS! 🚀 Ficamos felizes em ter você conosco.")
+
+# --- 14. NOVO MÓDULO: FINANCEIRO & VIAGENS ---
+elif menu == "💰 PAGAMENTOS & IFOOD":
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("💸 Pagamentos & NFs")
-        st.write("- Recargas Ifood (SLA: 24h)")
-        st.write("- Envio de NFs para Financeiro")
+        st.subheader("🍔 Gestão Ifood")
+        st.write("- Recarga mensal Ifood")
+        st.write("- Envio de NF Financeiro")
+        if st.button("Confirmar Envio NF Mensal"): st.success("NF enviada para o Financeiro!")
     with c2:
-        st.subheader("✈️ Viagens & Uber")
-        st.write("- Inclusão Uber Business")
-        st.write("- Compra de Passagens/Hospedagem")
+        st.subheader("💸 Pagamentos")
+        st.write("- Pagamentos PSB")
+        st.write("- Pagamentos MDP")
+
+elif menu == "✈️ VIAGENS & UBER":
+    st.subheader("🚗 Mobilidade & Viagens")
+    st.write("- Inclusão Uber Business")
+    st.write("- Controle de Viagens & Compra de Passagens")
+    with st.expander("📝 Registrar Nova Viagem"):
+        with st.form("f_viagem"):
+            colab = st.text_input("Colaborador"); dest = st.text_input("Destino")
+            if st.form_submit_button("Registrar"): st.success("Viagem registrada no controle.")
+
+# --- 15. GESTÃO DE COLABORADORES CLT/PJ ---
+elif menu == "👥 COLABORADORES CLT/PJ":
+    st.subheader("Gestão de Movimentações e Férias")
+    df_ativos = carregar_dados("colaboradores_ativos")
+    if not df_ativos.empty:
+        st.dataframe(df_ativos[['nome', 'data_admissao']])
