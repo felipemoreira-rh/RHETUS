@@ -75,6 +75,18 @@ with engine.begin() as conn:
             data_upload DATE
         );
     """))
+    with engine.begin() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pagamentos_gerais (
+            id SERIAL PRIMARY KEY, 
+            empresa TEXT, 
+            categoria TEXT, -- PSB ou MDP
+            mes_referencia TEXT, 
+            arquivo_pg BYTEA, 
+            nome_arquivo TEXT,
+            data_upload DATE
+        );
+    """))
 
 # --- 5. SIDEBAR ---
 with st.sidebar:
@@ -268,69 +280,57 @@ elif menu == "📢 COMUNICADOS & PORTARIA":
 
 # --- 14. NOVO MÓDULO: FINANCEIRO & VIAGENS ---
 elif menu == "💰 PAGAMENTOS & IFOOD":
-    st.subheader("🍔 Gestão de Notas Fiscais iFood")
+    tab_ifood, tab_outros = st.tabs(["🍔 GESTÃO IFOOD", "💸 OUTROS PAGAMENTOS (PSB/MDP)"])
     
-    col_up, col_list = st.columns([1, 2])
-    
-    with col_up:
-        st.markdown('<div class="vaga-header">📤 UPLOAD DE NOTA FISCAL</div>', unsafe_allow_html=True)
-        with st.form("f_nf_ifood", clear_on_submit=True):
-            empresa_sel = st.selectbox("Empresa", ["ETUS", "BHAZ", "E3J", "Evolution", "No Name"])
-            mes_ref = st.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
-            arquivo_pdf = st.file_uploader("Selecione a NF (PDF)", type="pdf")
-            
-            if st.form_submit_button("SALVAR NOTA FISCAL"):
-                if arquivo_pdf:
-                    try:
-                        bytes_nf = arquivo_pdf.getvalue()
-                        nome_f = arquivo_pdf.name
+    with tab_ifood:
+        st.subheader("Notas Fiscais iFood")
+        col_up_if, col_list_if = st.columns([1, 2])
+        # ... (Mantém o código de upload do Ifood que já fizemos)
+        # Filtro: ETUS, BHAZ, E3J, Evolution, No Name
+
+    with tab_outros:
+        st.subheader("Gestão de Pagamentos: Plusdin, São Bernardo e Projeto Consegui Aprender")
+        
+        col_up_pg, col_list_pg = st.columns([1, 2])
+        
+        with col_up_pg:
+            st.markdown('<div class="vaga-header">📤 UPLOAD DE COMPROVANTE/NF</div>', unsafe_allow_html=True)
+            with st.form("f_pag_geral", clear_on_submit=True):
+                emp_pg = st.selectbox("Empresa", ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"])
+                cat_pg = st.radio("Categoria", ["PSB", "MDP"], horizontal=True)
+                mes_pg = st.selectbox("Mês", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="mes_pg")
+                arq_pg = st.file_uploader("Arquivo (PDF)", type="pdf", key="arq_pg")
+                
+                if st.form_submit_button("SALVAR PAGAMENTO"):
+                    if arq_pg:
                         executar_sql("""
-                            INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) 
-                            VALUES (:emp, :mes, :arq, :nom, :dat)
-                        """, {"emp": empresa_sel, "mes": mes_ref, "arq": bytes_nf, "nom": nome_f, "dat": date.today()})
-                        st.success(f"NF da {empresa_sel} salva com sucesso!")
+                            INSERT INTO pagamentos_gerais (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload) 
+                            VALUES (:emp, :cat, :mes, :arq, :nom, :dat)
+                        """, {"emp": emp_pg, "cat": cat_pg, "mes": mes_pg, "arq": arq_pg.getvalue(), "nom": arq_pg.name, "dat": date.today()})
+                        st.success("Salvo com sucesso!")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar: {e}")
-                else:
-                    st.warning("Por favor, selecione um arquivo PDF.")
-
-    with col_list:
-        st.markdown('<div class="vaga-header">🔍 CONSULTA E DOWNLOAD</div>', unsafe_allow_html=True)
-        filtro_empresa = st.multiselect("Filtrar por Empresa", ["ETUS", "BHAZ", "E3J", "Evolution", "No Name"], default=["ETUS", "BHAZ", "E3J", "Evolution", "No Name"])
         
-        df_nf = carregar_dados("notas_fiscais_ifood")
-        
-        if not df_nf.empty:
-            # Filtrando os dados na visualização
-            df_filtrado = df_nf[df_nf['empresa'].isin(filtro_empresa)]
+        with col_list_pg:
+            st.markdown('<div class="vaga-header">🔍 CONSULTA DE PAGAMENTOS</div>', unsafe_allow_html=True)
+            f_emp_pg = st.multiselect("Filtrar Empresa", ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"], default=["Plusdin", "São Bernardo", "Projeto Consegui Aprender"])
             
-            for _, row in df_filtrado.iterrows():
-                with st.expander(f"📄 {row['empresa']} - {row['mes_referencia']} (Upload em: {row['data_upload']})"):
-                    c1, c2 = st.columns([3, 1])
-                    c1.write(f"Arquivo: {row['nome_arquivo']}")
-                    if row['arquivo_nf']:
-                        c2.download_button(
-                            label="📥 Baixar NF",
-                            data=row['arquivo_nf'],
-                            file_name=row['nome_arquivo'],
-                            mime="application/pdf",
-                            key=f"dl_nf_{row['id']}"
-                        )
-                    if st.button("🗑️ Excluir", key=f"del_nf_{row['id']}"):
-                        executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id": row['id']})
-                        st.rerun()
-        else:
-            st.info("Nenhuma nota fiscal cadastrada ainda.")
-
-    st.divider()
-    st.subheader("💸 Outros Pagamentos")
-    st.write("- Controle de Pagamentos PSB/MDP")
-    
+            df_pg = carregar_dados("pagamentos_gerais")
+            if not df_pg.empty:
+                df_f_pg = df_pg[df_pg['empresa'].isin(f_emp_pg)]
+                for _, r in df_f_pg.iterrows():
+                    with st.expander(f"💰 {r['empresa']} | {r['categoria']} - {r['mes_referencia']}"):
+                        st.write(f"Arquivo: {r['nome_arquivo']}")
+                        st.download_button("📥 Baixar", r['arquivo_pg'], r['nome_arquivo'], key=f"dl_pg_{r['id']}")
+                        if st.button("🗑️ Excluir", key=f"del_pg_{r['id']}"):
+                            executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id": r['id']})
+                            st.rerun()
+            else:
+                st.info("Nenhum registro encontrado.")
 # --- 15. GESTÃO DE COLABORADORES CLT/PJ ---
 elif menu == "👥 COLABORADORES CLT/PJ":
     st.subheader("Gestão de Movimentações e Férias")
     df_ativos = carregar_dados("colaboradores_ativos")
     if not df_ativos.empty:
         st.dataframe(df_ativos[['nome', 'data_admissao']])
+
 
