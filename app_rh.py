@@ -121,14 +121,19 @@ elif menu == "🏢 VAGAS":
                     df = date.today() if ns == "Finalizada" else None
                     executar_sql("UPDATE vagas SET status_vaga=:s, data_fechamento=:df WHERE id=:id", {"s":ns,"df":df,"id":row['id']}); st.rerun()
 
-# --- 8. MÓDULO CANDIDATOS ---
+# --- 8. MÓDULO CANDIDATOS (INDENTAÇÃO CORRIGIDA) ---
 elif menu == "⚙️ CANDIDATOS":
-    df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
+    df_v = carregar_dados("vagas")
+    df_c = carregar_dados("candidatos")
+    
     with st.expander("➕ NOVO CANDIDATO"):
         with st.form("nc"):
-            nc = st.text_input("Nome"); vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
+            nc = st.text_input("Nome")
+            vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
             if st.form_submit_button("ADICIONAR"):
-                executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc}); st.rerun()
+                executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc})
+                st.rerun()
+
     if not df_c.empty:
         for v_nome in df_c['vaga_vinculada'].unique():
             st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
@@ -137,42 +142,31 @@ elif menu == "⚙️ CANDIDATOS":
                     c1, c2 = st.columns(2)
                     with c1:
                         etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
-                        idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
-                        ns = st.selectbox("Etapa", etapas, index=idx_etapa, key=f"s{cr['id']}")
-                        if st.button("Salvar Etapa", key=f"b{cr['id']}"):
-                            executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']}); st.rerun()
-                    with c2:
-                        up_cv = st.file_uploader("Currículo", type="pdf", key=f"up{cr['id']}")
-                        if up_cv and st.button("💾 Salvar PDF", key=f"sv{cr['id']}"):
-                            executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']}); st.rerun()
-                        if cr.get('arquivo_cv'): st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
-                            if not df_c.empty:
-        for v_nome in df_c['vaga_vinculada'].unique():
-            st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
-            for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
-                with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
+                        # Garante que o index atual seja válido
                         idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
                         ns = st.selectbox("Etapa", etapas, index=idx_etapa, key=f"s{cr['id']}")
                         
                         if st.button("Salvar Etapa", key=f"b{cr['id']}"):
-                            # 1. Atualiza o status do candidato
+                            # 1. Atualiza status no banco de candidatos
                             executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']})
                             
-                            # 2. AUTOMAÇÃO: Se for 'Finalizada', insere em colaboradores_ativos automaticamente
+                            # 2. AUTOMAÇÃO: Se Finalizada, joga para Colaboradores
                             if ns == "Finalizada":
-                                # Verifica se o colaborador já não existe para não duplicar
                                 df_check = carregar_dados("colaboradores_ativos")
+                                # Só insere se não houver ninguém com o mesmo nome para evitar duplicados
                                 if df_check.empty or cr['candidato'] not in df_check['nome'].values:
-                                    executar_sql("""
-                                        INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) 
-                                        VALUES (:n, 'CLT', :d)
-                                    """, {"n": cr['candidato'], "d": date.today()})
-                                    st.success(f"🎉 {cr['candidato']} movido para Colaboradores Ativos!")
-                            
+                                    executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, 'CLT', :d)", 
+                                                {"n": cr['candidato'], "d": date.today()})
+                                    st.success(f"{cr['candidato']} agora é um Colaborador Ativo!")
                             st.rerun()
+                    
+                    with c2:
+                        up_cv = st.file_uploader("Currículo (PDF)", type="pdf", key=f"up{cr['id']}")
+                        if up_cv and st.button("💾 Salvar PDF", key=f"sv{cr['id']}"):
+                            executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']})
+                            st.rerun()
+                        if cr['arquivo_cv'] is not None:
+                            st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
 
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
@@ -399,6 +393,7 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['equipamento_entregue']), key=f"equi{r['id']}")
                 if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
+
 
 
 
