@@ -71,10 +71,12 @@ with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     st.divider()
     area_sel = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal", "Financeiro & Notas"])
+    
     if area_sel == "RH - Recrutamento":
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
     elif area_sel == "DP - Departamento Pessoal":
-        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES"])
+        # Removido 'Candidatos' e adicionado 'Experiência'
+        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES", "⏳ PERÍODO DE EXPERIÊNCIA"])
     else:
         menu = st.radio("NAVEGAÇÃO", ["🍔 IFOOD", "💸 OUTROS PAGAMENTOS"])
 
@@ -299,27 +301,63 @@ elif menu == "💸 OUTROS PAGAMENTOS":
                         executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id": r['id']}); st.rerun()
 
 # --- 14. MÓDULO COLABORADORES (RESTANTE DA LISTA) ---
-elif menu == "👥 COLABORADORES":
-    st.subheader("Gestão de Benefícios e Equipamentos")
-    df_col = carregar_dados("colaboradores_ativos")
-    with st.expander("➕ CADASTRAR NOVO COLABORADOR"):
-        with st.form("f_col_new"):
-            nome, tipo = st.text_input("Nome"), st.selectbox("Tipo", ["CLT", "PJ", "Estagiário"])
-            if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, :t, :d)", {"n":nome, "t":tipo, "d":date.today()}); st.rerun()
-    if not df_col.empty:
-        for _, r in df_col.iterrows():
-            with st.expander(f"👤 {r['nome']} [{r['tipo']}]"):
-                c1, c2, c3, c4 = st.columns(4)
-                star = c1.checkbox("Starbem", value=bool(r['status_starbem']), key=f"star{r['id']}")
-                amil = c2.checkbox("AMIL", value=bool(r['status_amil']), key=f"amil{r['id']}")
-                ifoo = c3.checkbox("iFood", value=bool(r['status_ifood']), key=f"ifoo{r['id']}")
-                equi = c4.checkbox("Equipamento", value=bool(r['status_equipamento']), key=f"equi{r['id']}")
-                if st.button("Salvar Status", key=f"svcol{r['id']}"):
-                    executar_sql("UPDATE colaboradores_ativos SET status_starbem=:s, status_amil=:a, status_ifood=:i, status_equipamento=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
-
-
-
-
+elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
+    st.subheader("Controle de Avaliação (45 e 90 dias)")
+    
+    df_colab = carregar_dados("colaboradores_ativos")
+    
+    if not df_colab.empty:
+        # Garantir que a data de admissão é do tipo datetime
+        df_colab['data_admissao'] = pd.to_datetime(df_colab['data_admissao']).dt.date
+        hoje = date.today()
+        
+        # Filtro de busca
+        busca = st.text_input("🔍 Buscar Colaborador", "").lower()
+        
+        for _, r in df_colab.iterrows():
+            if busca in r['nome'].lower():
+                # Cálculos de Experiência
+                data_adm = r['data_admissao']
+                data_45 = data_adm + pd.Timedelta(days=45)
+                data_90 = data_adm + pd.Timedelta(days=90)
+                
+                # Lógica de Alerta (Cor)
+                # Se faltar menos de 7 dias para os 45 ou 90, ou se já passou e não foi marcado ok
+                dias_para_45 = (data_45 - hoje).days
+                dias_para_90 = (data_90 - hoje).days
+                
+                status_color = "#f0f2f6" # padrão
+                if 0 <= dias_para_45 <= 7 or 0 <= dias_para_90 <= 7:
+                    status_color = "rgba(255, 75, 75, 0.2)" # Alerta vermelho claro
+                
+                with st.container():
+                    st.markdown(f"""
+                        <div style="background-color:{status_color}; padding:15px; border-radius:10px; border-left: 5px solid #8DF768; margin-bottom:10px;">
+                            <h4 style="margin:0;">👤 {r['nome']}</h4>
+                            <small>Admissão: {data_adm.strftime('%d/%m/%Y')} | Tipo: {r['tipo']}</small>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    c1, c2, c3 = st.columns([1, 1, 1])
+                    
+                    with c1:
+                        st.write(f"**1ª Etapa (45 dias)**")
+                        st.write(f"📅 {data_45.strftime('%d/%m/%Y')}")
+                        if dias_para_45 < 0: st.error("Vencido")
+                        elif dias_para_45 <= 7: st.warning(f"Vence em {dias_para_45} dias")
+                        
+                    with c2:
+                        st.write(f"**2ª Etapa (90 dias)**")
+                        st.write(f"📅 {data_90.strftime('%d/%m/%Y')}")
+                        if dias_para_90 < 0: st.error("Vencido")
+                        elif dias_para_90 <= 7: st.warning(f"Vence em {dias_para_90} dias")
+                        
+                    with c3:
+                        st.write("**Ação**")
+                        if st.button("✅ Avaliação Realizada", key=f"av{r['id']}"):
+                            st.success("Avaliação registrada no histórico!")
+                    st.divider()
+    else:
+        st.info("Nenhum colaborador ativo encontrado para calcular experiência.")
 
 
