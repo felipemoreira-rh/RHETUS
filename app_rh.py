@@ -374,3 +374,4 @@ elif menu == "👥 COLABORADORES":
                     executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
 
 
+
