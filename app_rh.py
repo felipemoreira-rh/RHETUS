@@ -220,6 +220,7 @@ elif menu == "📊 DASHBOARD DP":
     
     df_col = carregar_dados("colaboradores_ativos")
     df_est = carregar_dados("contratos_estagio")
+    df_exp = carregar_dados("controle_experiencia") # Carregado aqui para uso nos KPIs
     
     if not df_col.empty:
         # --- LINHA 1: MÉTRICAS GERAIS ---
@@ -247,7 +248,6 @@ elif menu == "📊 DASHBOARD DP":
         
         with col_graph1:
             st.markdown("**Distribuição por Tipo de Contrato**")
-            # LINHA CORRIGIDA ABAIXO
             fig_tipo = px.pie(df_col, names='tipo', hole=0.4, color_discrete_sequence=['#8DF768', '#1E1E1E', '#555555'])
             st.plotly_chart(fig_tipo, use_container_width=True)
             
@@ -272,9 +272,47 @@ elif menu == "📊 DASHBOARD DP":
             else:
                 st.info("Sem dados de estágio para exibir progresso.")
 
+        # --- NOVO GRÁFICO: INDICADOR DE ADERÊNCIA (EXPERIÊNCIA) ---
+        st.divider()
+        st.markdown("**Qualidade e Aderência ao Prazo (Experiência 45/90 dias)**")
+        
+        if not df_exp.empty:
+            hoje = date.today()
+            no_prazo, atrasado_pendente = 0, 0
+            
+            for _, r in df_exp.iterrows():
+                for dias in [45, 90]:
+                    dt_limite = r['data_inicio'] + pd.Timedelta(days=dias)
+                    campo_feito = r['av1_feito'] if dias == 45 else r['av2_feito']
+                    campo_data = r['av1_data'] if dias == 45 else r['av2_data']
+                    
+                    if campo_feito:
+                        if campo_data and campo_data <= dt_limite:
+                            no_prazo += 1
+                        else:
+                            atrasado_pendente += 1
+                    elif hoje > dt_limite:
+                        atrasado_pendente += 1
+            
+            c_g1, c_g2 = st.columns([1, 2])
+            with c_g1:
+                total_total = no_prazo + atrasado_pendente
+                perc_ad = (no_prazo / total_total * 100) if total_total > 0 else 100
+                st.metric("🎯 ADERÊNCIA AO PRAZO", f"{round(perc_ad, 1)}%")
+            
+            with c_g2:
+                fig_prazos = px.pie(names=["No Prazo", "Fora do Prazo / Pendente"], 
+                                    values=[no_prazo, atrasado_pendente], 
+                                    hole=0.4, height=300,
+                                    color_discrete_map={"No Prazo": "#8DF768", "Fora do Prazo / Pendente": "#FF4B4B"})
+                fig_prazos.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                st.plotly_chart(fig_prazos, use_container_width=True)
+        else:
+            st.info("Aguardando dados de experiência para gerar indicador de aderência.")
+
         # --- LINHA 3: ALERTAS DE VENCIMENTO DE EXPERIÊNCIA ---
+        st.divider()
         st.markdown('<div class="vaga-header">⚠️ ALERTAS DE EXPERIÊNCIA PRÓXIMOS (7 DIAS)</div>', unsafe_allow_html=True)
-        df_exp = carregar_dados("controle_experiencia")
         if not df_exp.empty:
             hoje = date.today()
             alertas = []
@@ -449,6 +487,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
