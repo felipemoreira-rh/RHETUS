@@ -121,7 +121,7 @@ elif menu == "🏢 VAGAS":
                     df = date.today() if ns == "Finalizada" else None
                     executar_sql("UPDATE vagas SET status_vaga=:s, data_fechamento=:df WHERE id=:id", {"s":ns,"df":df,"id":row['id']}); st.rerun()
 
-# --- 8. MÓDULO CANDIDATOS (CORREÇÃO KEYERROR ARQUIVO_CV) ---
+# --- 8. MÓDULO CANDIDATOS (COM CONTRATAÇÃO E AUTOMAÇÃO PARA EXPERIÊNCIA) ---
 elif menu == "⚙️ CANDIDATOS":
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
@@ -143,17 +143,41 @@ elif menu == "⚙️ CANDIDATOS":
                     with c1:
                         etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
                         idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
-                        ns = st.selectbox("Etapa", etapas, index=idx_etapa, key=f"s{cr['id']}")
+                        ns = st.selectbox("Etapa Atual", etapas, index=idx_etapa, key=f"s{cr['id']}")
                         
-                        if st.button("Salvar Etapa", key=f"b{cr['id']}"):
+                        # Se marcar como Finalizada, abre opções de contratação
+                        data_ini_contratado = None
+                        if ns == "Finalizada":
+                            st.info("✨ Candidato em fase de contratação")
+                            foi_contratado = st.checkbox("Confirmar Contratação?", key=f"conf{cr['id']}")
+                            if foi_contratado:
+                                data_ini_contratado = st.date_input("Data de Início (Admissão)", value=date.today(), key=f"dt_ini{cr['id']}")
+                        
+                        if st.button("Salvar Status e Integrar", key=f"b{cr['id']}"):
+                            # 1. Atualiza status do candidato
                             executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']})
                             
-                            if ns == "Finalizada":
-                                df_check = carregar_dados("colaboradores_ativos")
-                                if df_check.empty or cr['candidato'] not in df_check['nome'].values:
+                            # 2. Se Finalizada + Confirmar Contratação -> Automação DP
+                            if ns == "Finalizada" and data_ini_contratado:
+                                # A) Envia para Colaboradores Ativos
+                                df_colab = carregar_dados("colaboradores_ativos")
+                                if df_colab.empty or cr['candidato'] not in df_colab['nome'].values:
                                     executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, 'CLT', :d)", 
-                                                {"n": cr['candidato'], "d": date.today()})
-                                    st.success(f"{cr['candidato']} movido para Colaboradores!")
+                                                {"n": cr['candidato'], "d": data_ini_contratado})
+                                
+                                # B) Envia para Controle de Experiência (DP)
+                                df_exp = carregar_dados("controle_experiencia")
+                                if df_exp.empty or cr['candidato'] not in df_exp['nome'].values:
+                                    executar_sql("""
+                                        INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) 
+                                        VALUES (:n, :c, :t, :d)
+                                    """, {
+                                        "n": cr['candidato'], 
+                                        "c": cr['vaga_vinculada'], 
+                                        "t": "A definir", # Pode ser ajustado depois no DP
+                                        "d": data_ini_contratado
+                                    })
+                                st.success(f"✅ {cr['candidato']} integrado ao DP (Colaboradores e Experiência)!")
                             st.rerun()
                     
                     with c2:
@@ -162,11 +186,15 @@ elif menu == "⚙️ CANDIDATOS":
                             executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']})
                             st.rerun()
                         
-                        # CORREÇÃO KEYERROR: Verificamos se a coluna existe e se o valor não é nulo
-                        if 'arquivo_cv' in cr and pd.notnull(cr['arquivo_cv']):
+                        # Verificação segura da coluna de arquivo para evitar KeyError
+                        tem_cv = False
+                        if 'arquivo_cv' in cr:
+                             if cr['arquivo_cv'] is not None: tem_cv = True
+                        
+                        if tem_cv:
                             st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
                         else:
-                            st.info("Nenhum currículo anexado.")
+                            st.caption("Nenhum currículo anexado.")
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     df_c = carregar_dados("candidatos")
@@ -392,6 +420,7 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['equipamento_entregue']), key=f"equi{r['id']}")
                 if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
+
 
 
 
