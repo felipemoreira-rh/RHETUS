@@ -403,8 +403,9 @@ elif menu == "💸 OUTROS PAGAMENTOS":
 
 # --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (COMPLETO) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
-    st.subheader("Controle de Avaliação de Experiência (45 e 90 dias)")
+    st.subheader("Controle de Avaliação de Experiência (90 dias)")
     col_cad, col_gst = st.columns([1, 2])
+    
     with col_cad:
         st.markdown('<div class="vaga-header">➕ CADASTRAR NOVO PERÍODO</div>', unsafe_allow_html=True)
         with st.form("f_exp_cad", clear_on_submit=True):
@@ -416,31 +417,27 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
                 if n_exp:
                     executar_sql("INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) VALUES (:n, :c, :t, :d)", {"n": n_exp, "c": c_exp, "t": t_exp, "d": d_ini})
                     st.success("Cadastrado!"); st.rerun()
+
     with col_gst:
-        st.markdown('<div class="vaga-header">📋 GESTÃO DE AVALIAÇÕES</div>', unsafe_allow_html=True)
+        st.markdown('<div class="vaga-header">📋 GESTÃO DE AVALIAÇÕES (90 DIAS)</div>', unsafe_allow_html=True)
         df_exp = carregar_dados("controle_experiencia")
         if not df_exp.empty:
             for _, r in df_exp.iterrows():
-                d45 = r['data_inicio'] + pd.Timedelta(days=45)
                 d90 = r['data_inicio'] + pd.Timedelta(days=90)
-                with st.expander(f"👤 {r['nome']} - {r['cargo']} ({r['time_equipe']})"):
+                with st.expander(f"👤 {r['nome']} - Limite: {d90.strftime('%d/%m/%Y')}"):
                     c1, c2 = st.columns(2)
                     with c1:
-                        st.write(f"**1º Período (45d): {d45.strftime('%d/%m/%Y')}**")
-                        v1 = st.checkbox("Avaliação 1 Feita", value=bool(r['av1_feito']), key=f"v1{r['id']}")
-                        r1 = st.text_input("Avaliador 1", value=r['av1_responsavel'] or "", key=f"r1{r['id']}")
-                        dt1 = st.date_input("Data Av. 1", value=r['av1_data'] if r['av1_data'] else d45, key=f"dt1{r['id']}")
+                        v2 = st.checkbox("Avaliação 90d Feita", value=bool(r['av2_feito']), key=f"v2{r['id']}")
+                        r2 = st.text_input("Avaliador Responsável", value=r['av2_responsavel'] or "", key=f"r2{r['id']}")
                     with c2:
-                        st.write(f"**2º Período (90d): {d90.strftime('%d/%m/%Y')}**")
-                        v2 = st.checkbox("Avaliação 2 Feita", value=bool(r['av2_feito']), key=f"v2{r['id']}")
-                        r2 = st.text_input("Avaliador 2", value=r['av2_responsavel'] or "", key=f"r2{r['id']}")
-                        dt2 = st.date_input("Data Av. 2", value=r['av2_data'] if r['av2_data'] else d90, key=f"dt2{r['id']}")
+                        dt2 = st.date_input("Data da Realização", value=r['av2_data'] if r['av2_data'] else d90, key=f"dt2{r['id']}")
                     
-                    if st.button("💾 Salvar Dados de Experiência", key=f"svexp{r['id']}"):
-                        executar_sql("UPDATE controle_experiencia SET av1_feito=:v1, av1_responsavel=:r1, av1_data=:dt1, av2_feito=:v2, av2_responsavel=:r2, av2_data=:dt2 WHERE id=:id", 
-                                    {"v1": v1, "r1": r1, "dt1": dt1, "v2": v2, "r2": r2, "dt2": dt2, "id": r['id']})
+                    if st.button("💾 Salvar Avaliação", key=f"svexp{r['id']}"):
+                        executar_sql("UPDATE controle_experiencia SET av2_feito=:v2, av2_responsavel=:r2, av2_data=:dt2 WHERE id=:id", 
+                                    {"v2": v2, "r2": r2, "dt2": dt2, "id": r['id']})
                         st.success("Salvo!"); st.rerun()
-                    if st.button("🗑️ Excluir Registro", key=f"delexp{r['id']}"):
+                    
+                    if st.button("🗑️ Excluir", key=f"delexp{r['id']}"):
                         executar_sql("DELETE FROM controle_experiencia WHERE id=:id", {"id": r['id']}); st.rerun()
 
 # --- 15. MÓDULO COLABORADORES ---
@@ -487,6 +484,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
