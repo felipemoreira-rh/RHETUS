@@ -161,7 +161,7 @@ elif menu == "🚀 ONBOARDING":
             if st.button("Salvar Checklist", key=f"svon{r['id']}"):
                 executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.success("Checklist Salvo!"); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E COMPLETO) ---
+# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E CORRIGIDO) ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
     
@@ -175,13 +175,17 @@ elif menu == "📊 DASHBOARD DP":
         c2.metric("👔 CLT/PJ", len(df_col[df_col['tipo'].isin(['CLT', 'PJ'])]))
         c3.metric("🎓 ESTAGIÁRIOS", len(df_col[df_col['tipo'] == 'Estagiário']))
         
-        # Cálculo de Benefícios Concluídos (Média de todos os campos booleanos)
+        # Cálculo de Benefícios Concluídos
         check_cols = ['cad_starbem', 'incl_amil', 'ifood_ativo', 'equipamento_entregue']
-        # Garante que as colunas existem e calcula a média de preenchimento
-        total_checks = df_col[check_cols].sum().sum()
-        max_possible = len(df_col) * len(check_cols)
-        perc_beneficios = (total_checks / max_possible * 100) if max_possible > 0 else 0
-        c4.metric("✅ BENEFÍCIOS OK", f"{round(perc_beneficios, 1)}%")
+        existentes = [col for col in check_cols if col in df_col.columns]
+        
+        if existentes:
+            total_checks = df_col[existentes].sum().sum()
+            max_possible = len(df_col) * len(existentes)
+            perc_beneficios = (total_checks / max_possible * 100) if max_possible > 0 else 0
+            c4.metric("✅ BENEFÍCIOS OK", f"{round(perc_beneficios, 1)}%")
+        else:
+            c4.metric("✅ BENEFÍCIOS OK", "0%")
 
         st.divider()
 
@@ -190,7 +194,52 @@ elif menu == "📊 DASHBOARD DP":
         
         with col_graph1:
             st.markdown("**Distribuição por Tipo de Contrato**")
-            fig_tipo = px.pie(df_col, names='tipo', hole=0.4, color
+            # LINHA CORRIGIDA ABAIXO
+            fig_tipo = px.pie(df_col, names='tipo', hole=0.4, color_discrete_sequence=['#8DF768', '#1E1E1E', '#555555'])
+            st.plotly_chart(fig_tipo, use_container_width=True)
+            
+        with col_graph2:
+            st.markdown("**Acompanhamento de Contratos de Estágio**")
+            if not df_est.empty:
+                df_est['data_fim'] = pd.to_datetime(df_est['data_fim'])
+                df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'])
+                hoje_ts = pd.Timestamp(date.today())
+                
+                progress_data = []
+                for _, r in df_est.iterrows():
+                    total_dias = (r['data_fim'] - r['data_inicio']).days
+                    passado = (hoje_ts - r['data_inicio']).days
+                    perc = max(0, min(100, (passado / total_dias * 100))) if total_dias > 0 else 0
+                    progress_data.append({"Estagiário": r['estagiario'], "Progresso": perc})
+                
+                df_prog = pd.DataFrame(progress_data)
+                fig_prog = px.bar(df_prog, x='Progresso', y='Estagiário', orientation='h', 
+                                  range_x=[0, 100], color_discrete_sequence=['#8DF768'])
+                st.plotly_chart(fig_prog, use_container_width=True)
+            else:
+                st.info("Sem dados de estágio para exibir progresso.")
+
+        # --- LINHA 3: ALERTAS DE VENCIMENTO DE EXPERIÊNCIA ---
+        st.markdown('<div class="vaga-header">⚠️ ALERTAS DE EXPERIÊNCIA PRÓXIMOS (7 DIAS)</div>', unsafe_allow_html=True)
+        df_exp = carregar_dados("controle_experiencia")
+        if not df_exp.empty:
+            hoje = date.today()
+            alertas = []
+            for _, r in df_exp.iterrows():
+                d45 = r['data_inicio'] + pd.Timedelta(days=45)
+                d90 = r['data_inicio'] + pd.Timedelta(days=90)
+                
+                if not r['av1_feito'] and 0 <= (d45 - hoje).days <= 7:
+                    alertas.append(f"🔴 **{r['nome']}**: 45 dias em {d45.strftime('%d/%m/%Y')}")
+                if not r['av2_feito'] and 0 <= (d90 - hoje).days <= 7:
+                    alertas.append(f"🟠 **{r['nome']}**: 90 dias em {d90.strftime('%d/%m/%Y')}")
+            
+            if alertas:
+                for a in alertas: st.warning(a)
+            else:
+                st.success("Tudo em dia! Nenhuma avaliação vence nos próximos 7 dias.")
+    else:
+        st.info("Cadastre colaboradores ativos para visualizar os indicadores de DP.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
@@ -323,4 +372,5 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['equipamento_entregue']), key=f"equi{r['id']}")
                 if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
+
 
