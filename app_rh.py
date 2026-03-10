@@ -76,7 +76,7 @@ with st.sidebar:
         menu = st.radio("NAVEGAÇÃO", ["📊 INDICADORES", "🏢 VAGAS", "⚙️ CANDIDATOS", "🚀 ONBOARDING"])
     elif area_sel == "DP - Departamento Pessoal":
         # Removido 'Candidatos' e adicionado 'Experiência'
-        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES", "⏳ PERÍODO DE EXPERIÊNCIA"])
+        menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "⏳ PERÍODO DE EXPERIÊNCIA"])
     else:
         menu = st.radio("NAVEGAÇÃO", ["🍔 IFOOD", "💸 OUTROS PAGAMENTOS"])
 
@@ -359,5 +359,6 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
                     st.divider()
     else:
         st.info("Nenhum colaborador ativo encontrado para calcular experiência.")
+
 
 
