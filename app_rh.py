@@ -284,7 +284,7 @@ elif menu == "💸 OUTROS PAGAMENTOS":
         filtro_pg = st.multiselect(
             "Filtrar por Empresa", 
             ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"], 
-            default=["Plusdin", "São Bernardo", "Projeto Consegui Aprender"]
+            default=["Plusdin São Bernardo", "Projeto Consegui Aprender"]
         )
         
         df_pg = carregar_dados("pagamentos_gerais")
@@ -326,6 +326,7 @@ elif menu == "👥 COLABORADORES":
                 equi = c4.checkbox("Equipamento", value=bool(r['status_equipamento']), key=f"equi{r['id']}")
                 if st.button("Salvar Status", key=f"svcol{r['id']}"):
                     executar_sql("UPDATE colaboradores_ativos SET status_starbem=:s, status_amil=:a, status_ifood=:i, status_equipamento=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
+
 
 
 
