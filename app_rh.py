@@ -185,6 +185,11 @@ elif menu == "⚙️ CANDIDATOS":
                         if up_cv and st.button("💾 Salvar PDF", key=f"sv{cr['id']}"):
                             executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']})
                             st.rerun()
+                            st.divider()
+                    if st.button(f"🗑️ Excluir Candidato: {cr['candidato']}", key=f"delcan{cr['id']}"):
+                        executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
+                        st.warning(f"Candidato {cr['candidato']} removido.")
+                        st.rerun()
                         
                         # Verificação segura da coluna de arquivo para evitar KeyError
                         tem_cv = False
@@ -402,28 +407,48 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
 
 # --- 15. MÓDULO COLABORADORES ---
 elif menu == "👥 COLABORADORES":
-    st.subheader("Gestão de Benefícios")
+    st.subheader("Gestão de Benefícios e Contratos")
     df_col = carregar_dados("colaboradores_ativos")
-    with st.expander("➕ CADASTRAR NOVO COLABORADOR"):
-        with st.form("f_col"):
+    
+    lista_modalidades = ["CLT", "PJ", "Estagiário", "Trainee", "Freelancer"]
+
+    with st.expander("➕ CADASTRAR NOVO COLABORADOR MANUALMENTE"):
+        with st.form("f_col_manual"):
             n_col = st.text_input("Nome")
-            t_col = st.selectbox("Tipo", ["CLT", "PJ", "Estagiário"])
+            t_col = st.selectbox("Tipo de Contratação", lista_modalidades)
+            d_adm = st.date_input("Data de Admissão", value=date.today())
             if st.form_submit_button("CADASTRAR"):
-                executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, :t, :d)", {"n":n_col, "t":t_col, "d":date.today()}); st.rerun()
+                executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, :t, :d)", 
+                            {"n":n_col, "t":t_col, "d":d_adm})
+                st.success("Colaborador cadastrado!"); st.rerun()
+
     if not df_col.empty:
         for _, r in df_col.iterrows():
             with st.expander(f"👤 {r['nome']} [{r['tipo']}]"):
-                c1, c2, c3, c4 = st.columns(4)
+                c_tipo, c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1, 1])
+                
+                # Permite alterar o tipo de contratação de quem já está na lista
+                novo_tipo = c_tipo.selectbox("Alterar Tipo", lista_modalidades, 
+                                            index=lista_modalidades.index(r['tipo']) if r['tipo'] in lista_modalidades else 0,
+                                            key=f"tipo{r['id']}")
+                
                 star = c1.checkbox("Starbem", value=bool(r['cad_starbem']), key=f"star{r['id']}")
                 amil = c2.checkbox("AMIL", value=bool(r['incl_amil']), key=f"amil{r['id']}")
                 ifoo = c3.checkbox("iFood", value=bool(r['ifood_ativo']), key=f"ifoo{r['id']}")
                 equi = c4.checkbox("Equipamento", value=bool(r['equipamento_entregue']), key=f"equi{r['id']}")
-                if st.button("Salvar Benefícios", key=f"svb{r['id']}"):
-                    executar_sql("UPDATE colaboradores_ativos SET cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e WHERE id=:id", {"s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']}); st.rerun()
-
-
-
-
+                
+                col_btn1, col_btn2 = st.columns(2)
+                if col_btn1.button("💾 Salvar Alterações", key=f"svb{r['id']}"):
+                    executar_sql("""
+                        UPDATE colaboradores_ativos 
+                        SET tipo=:t, cad_starbem=:s, incl_amil=:a, ifood_ativo=:i, equipamento_entregue=:e 
+                        WHERE id=:id
+                    """, {"t":novo_tipo, "s":star, "a":amil, "i":ifoo, "e":equi, "id":r['id']})
+                    st.success("Dados atualizados!"); st.rerun()
+                
+                if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
+                    executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
+                    st.rerun()
 
 
 
