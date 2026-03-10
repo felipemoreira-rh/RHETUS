@@ -272,65 +272,52 @@ elif menu == "📊 DASHBOARD DP":
             else:
                 st.info("Sem dados de estágio para exibir progresso.")
 
-        # --- NOVO GRÁFICO: INDICADOR DE ADERÊNCIA (EXPERIÊNCIA) ---
+        # --- NOVO GRÁFICO: INDICADOR DE ADERÊNCIA (SOMENTE 90 DIAS) ---
         st.divider()
-        st.markdown("**Qualidade e Aderência ao Prazo (Experiência 45/90 dias)**")
+        st.markdown("**Qualidade e Aderência ao Prazo (Experiência 90 dias)**")
         
         if not df_exp.empty:
             hoje = date.today()
             no_prazo, atrasado_pendente = 0, 0
             
             for _, r in df_exp.iterrows():
-                for dias in [45, 90]:
-                    dt_limite = r['data_inicio'] + pd.Timedelta(days=dias)
-                    campo_feito = r['av1_feito'] if dias == 45 else r['av2_feito']
-                    campo_data = r['av1_data'] if dias == 45 else r['av2_data']
-                    
-                    if campo_feito:
-                        if campo_data and campo_data <= dt_limite:
-                            no_prazo += 1
-                        else:
-                            atrasado_pendente += 1
-                    elif hoje > dt_limite:
+                dt_limite = r['data_inicio'] + pd.Timedelta(days=90)
+                if r['av2_feito']:
+                    if r['av2_data'] and r['av2_data'] <= dt_limite:
+                        no_prazo += 1
+                    else:
                         atrasado_pendente += 1
+                elif hoje > dt_limite:
+                    atrasado_pendente += 1
             
             c_g1, c_g2 = st.columns([1, 2])
             with c_g1:
                 total_total = no_prazo + atrasado_pendente
                 perc_ad = (no_prazo / total_total * 100) if total_total > 0 else 100
-                st.metric("🎯 ADERÊNCIA AO PRAZO", f"{round(perc_ad, 1)}%")
+                st.metric("🎯 ADERÊNCIA 90 DIAS", f"{round(perc_ad, 1)}%")
             
             with c_g2:
-                fig_prazos = px.pie(names=["No Prazo", "Fora do Prazo / Pendente"], 
+                fig_prazos = px.pie(names=["No Prazo", "Atrasado / Pendente"], 
                                     values=[no_prazo, atrasado_pendente], 
                                     hole=0.4, height=300,
-                                    color_discrete_map={"No Prazo": "#8DF768", "Fora do Prazo / Pendente": "#FF4B4B"})
-                fig_prazos.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                                    color_discrete_map={"No Prazo": "#8DF768", "Atrasado / Pendente": "#FF4B4B"})
                 st.plotly_chart(fig_prazos, use_container_width=True)
-        else:
-            st.info("Aguardando dados de experiência para gerar indicador de aderência.")
 
         # --- LINHA 3: ALERTAS DE VENCIMENTO DE EXPERIÊNCIA ---
         st.divider()
-        st.markdown('<div class="vaga-header">⚠️ ALERTAS DE EXPERIÊNCIA PRÓXIMOS (7 DIAS)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="vaga-header">⚠️ ALERTAS DE AVALIAÇÃO (PRÓXIMOS 7 DIAS)</div>', unsafe_allow_html=True)
         if not df_exp.empty:
             hoje = date.today()
             alertas = []
             for _, r in df_exp.iterrows():
-                d45 = r['data_inicio'] + pd.Timedelta(days=45)
                 d90 = r['data_inicio'] + pd.Timedelta(days=90)
-                
-                if not r['av1_feito'] and 0 <= (d45 - hoje).days <= 7:
-                    alertas.append(f"🔴 **{r['nome']}**: 45 dias em {d45.strftime('%d/%m/%Y')}")
                 if not r['av2_feito'] and 0 <= (d90 - hoje).days <= 7:
-                    alertas.append(f"🟠 **{r['nome']}**: 90 dias em {d90.strftime('%d/%m/%Y')}")
+                    alertas.append(f"🟠 **{r['nome']}**: 90 dias vencem em {d90.strftime('%d/%m/%Y')}")
             
             if alertas:
                 for a in alertas: st.warning(a)
             else:
-                st.success("Tudo em dia! Nenhuma avaliação vence nos próximos 7 dias.")
-    else:
-        st.info("Cadastre colaboradores ativos para visualizar os indicadores de DP.")
+                st.success("Nenhuma avaliação de 90 dias pendente para esta semana.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
@@ -484,6 +471,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
