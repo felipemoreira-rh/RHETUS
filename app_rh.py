@@ -341,28 +341,52 @@ elif menu == "🎓 ESTAGIÁRIOS":
                 if st.button("🗑️ Excluir", key=f"delest{r['id']}"):
                     executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
 
-# --- 12. MÓDULO IFOOD (FILTRO CORRETO) ---
+# --- 12. MÓDULO IFOOD (APENAS GESTÃO DE NOTAS) ---
 elif menu == "🍔 IFOOD":
     st.subheader("Gestão iFood")
     lista_if = ["ETUS", "BHAZ", "E3J", "Evolution", "No Name"]
     col_u, col_l = st.columns([1, 2])
+    
     with col_u:
         st.markdown('<div class="vaga-header">📤 UPLOAD NF IFOOD</div>', unsafe_allow_html=True)
-        with st.form("f_if"):
+        with st.form("f_if", clear_on_submit=True):
             emp = st.selectbox("Empresa", lista_if)
             mes = st.selectbox("Mês", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
             arq = st.file_uploader("Anexar NF (PDF)", type="pdf")
             if st.form_submit_button("SALVAR NOTA"):
-                if arq: executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e,:m,:a,:n,:d)", {"e":emp,"m":mes,"a":arq.getvalue(),"n":arq.name,"d":date.today()}); st.rerun()
+                if arq: 
+                    executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e,:m,:a,:n,:d)", 
+                                 {"e":emp, "m":mes, "a":arq.getvalue(), "n":arq.name, "d":date.today()})
+                    st.success("Nota salva com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Por favor, anexe um arquivo PDF.")
+
     with col_l:
         st.markdown('<div class="vaga-header">🔍 CONSULTA IFOOD</div>', unsafe_allow_html=True)
         f_if = st.multiselect("Filtrar por Empresa iFood", lista_if, default=lista_if)
+        
+        # Carrega APENAS os dados da tabela de Notas Fiscais
         df_if = carregar_dados("notas_fiscais_ifood")
+        
         if not df_if.empty:
-            for _, r in df_if[df_if['empresa'].isin(f_if)].iterrows():
-                with st.expander(f"📄 {r['empresa']} - {r['mes_referencia']}"):
-                    st.download_button("📥 Baixar", r['arquivo_nf'], r['nome_arquivo'], key=f"dlif{r['id']}")
-                    if st.button("🗑️ Excluir", key=f"delif{r['id']}"): executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id":r['id']}); st.rerun()
+            # Filtra o dataframe com base na seleção do multiselect
+            df_filtrado = df_if[df_if['empresa'].isin(f_if)]
+            
+            if df_filtrado.empty:
+                st.info("Nenhuma nota encontrada para as empresas selecionadas.")
+            else:
+                for _, r in df_filtrado.iterrows():
+                    with st.expander(f"📄 {r['empresa']} - {r['mes_referencia']} (Upload: {r['data_upload']})"):
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            st.download_button("📥 Baixar NF", r['arquivo_nf'], r['nome_arquivo'], key=f"dlif{r['id']}")
+                        with col_btn2:
+                            if st.button("🗑️ Excluir Nota", key=f"delif{r['id']}"):
+                                executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id":r['id']})
+                                st.rerun()
+        else:
+            st.info("Ainda não há notas fiscais cadastradas no sistema.")
 
 # --- 13. MÓDULO OUTROS PAGAMENTOS (FILTRO CORRETO) ---
 elif menu == "💸 OUTROS PAGAMENTOS":
@@ -494,6 +518,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
