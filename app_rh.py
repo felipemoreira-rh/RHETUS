@@ -366,8 +366,8 @@ elif menu == "🍔 IFOOD":
 
 # --- 13. MÓDULO OUTROS PAGAMENTOS (FILTRO CORRETO) ---
 elif menu == "💸 OUTROS PAGAMENTOS":
-    st.subheader("Pagamentos Plusdin, São Bernardo e Projeto")
-    lista_pg = ["Plusdin", "São Bernardo", "Projeto Consegui Aprender"]
+    st.subheader("Pagamentos Plusdin São Bernardo e Projeto Consegui Aprender")
+    lista_pg = ["Plusdin São Bernardo", "Projeto Consegui Aprender"]
     col_u, col_l = st.columns([1, 2])
     with col_u:
         st.markdown('<div class="vaga-header">📤 NOVO LANÇAMENTO</div>', unsafe_allow_html=True)
@@ -494,6 +494,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
