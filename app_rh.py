@@ -49,25 +49,107 @@ def carregar_dados(tabela):
     except:
         return pd.DataFrame()
 
-# --- 4. BANCO DE DADOS (INICIALIZAÇÃO ROBUSTA) ---
+# --- 4. BANCO DE DADOS (ESTRUTURA COMPLETA E ATUALIZADA) ---
 with engine.begin() as conn:
-    # 1. Criação das tabelas base
-    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE, indicacao BOOLEAN DEFAULT FALSE, nome_indicador TEXT);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, cad_starbem BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, ifood_ativo BOOLEAN DEFAULT FALSE, equipamento_entregue BOOLEAN DEFAULT FALSE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS controle_experiencia (id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT);"))
+    # 1. CRIAÇÃO DE TABELAS (Caso não existam)
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS vagas (
+            id SERIAL PRIMARY KEY, 
+            nome_vaga TEXT, 
+            area TEXT, 
+            status_vaga TEXT, 
+            gestor TEXT, 
+            data_abertura DATE, 
+            data_fechamento DATE, 
+            empresa TEXT
+        );
+    """))
+    
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS candidatos (
+            id SERIAL PRIMARY KEY, 
+            candidato TEXT, 
+            vaga_vinculada TEXT, 
+            status_geral TEXT, 
+            arquivo_cv BYTEA, 
+            envio_proposta BOOLEAN DEFAULT FALSE, 
+            solic_documentos BOOLEAN DEFAULT FALSE, 
+            solic_contrato BOOLEAN DEFAULT FALSE, 
+            solic_acessos BOOLEAN DEFAULT FALSE,
+            indicacao BOOLEAN DEFAULT FALSE,
+            nome_indicador TEXT,
+            data_inicio DATE,
+            data_proposta DATE,
+            data_documentos DATE,
+            data_foto_curiosidades DATE,
+            data_contrato DATE,
+            data_equipamentos DATE
+        );
+    """))
 
-    # 2. Atualizações de colunas (Migrations) para tabelas existentes
-    try:
-        conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;"))
-        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;"))
-        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;"))
-    except Exception as e:
-        pass
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS contratos_estagio (
+            id SERIAL PRIMARY KEY, 
+            estagiario TEXT, 
+            instituicao TEXT, 
+            data_inicio DATE, 
+            data_fim DATE, 
+            time_equipe TEXT, 
+            solic_contrato_dp BOOLEAN DEFAULT FALSE, 
+            assina_etus BOOLEAN DEFAULT FALSE, 
+            assina_faculdade BOOLEAN DEFAULT FALSE, 
+            envio_juridico BOOLEAN DEFAULT FALSE
+        );
+    """))
 
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS controle_experiencia (
+            id SERIAL PRIMARY KEY, 
+            nome TEXT, 
+            cargo TEXT, 
+            time_equipe TEXT, 
+            data_inicio DATE, 
+            av1_feito BOOLEAN DEFAULT FALSE, 
+            av1_data DATE, 
+            av1_responsavel TEXT, 
+            av2_feito BOOLEAN DEFAULT FALSE, 
+            av2_data DATE, 
+            av2_responsavel TEXT
+        );
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS colaboradores_ativos (
+            id SERIAL PRIMARY KEY, 
+            nome TEXT, 
+            tipo TEXT, 
+            data_admissao DATE, 
+            cad_starbem BOOLEAN DEFAULT FALSE, 
+            incl_amil BOOLEAN DEFAULT FALSE, 
+            ifood_ativo BOOLEAN DEFAULT FALSE, 
+            equipamento_entregue BOOLEAN DEFAULT FALSE
+        );
+    """))
+
+    # 2. MIGRATIONS (Adicionando colunas novas em tabelas que já podem existir)
+    # Usamos blocos Try/Except individuais para que, se a coluna já existir, o código não pare.
+    migrations = [
+        "ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_inicio DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_proposta DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_documentos DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_foto_curiosidades DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_contrato DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_equipamentos DATE;"
+    ]
+
+    for sql in migrations:
+        try:
+            conn.execute(text(sql))
+        except Exception:
+            pass # Coluna já existe ou erro ignorável
 # --- 5. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
@@ -225,17 +307,55 @@ elif menu == "⚙️ CANDIDATOS":
                             st.rerun()
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
+    st.subheader("Controle de Entrada de Novos Colaboradores")
     df_c = carregar_dados("candidatos")
-    aprovados = df_c[df_c['status_geral'] == 'Finalizada'] if not df_c.empty else pd.DataFrame()
-    for _, r in aprovados.iterrows():
-        with st.expander(f"🚀 {r['candidato']}"):
-            c1, c2, c3, c4 = st.columns(4)
-            p = c1.checkbox("Proposta", value=bool(r['envio_proposta']), key=f"p{r['id']}")
-            d = c2.checkbox("Docs", value=bool(r['solic_documentos']), key=f"d{r['id']}")
-            c = c3.checkbox("Contrato", value=bool(r['solic_contrato']), key=f"c{r['id']}")
-            a = c4.checkbox("Acessos", value=bool(r['solic_acessos']), key=f"a{r['id']}")
-            if st.button("Salvar Checklist", key=f"svon{r['id']}"):
-                executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.success("Checklist Salvo!"); st.rerun()
+    
+    # Filtramos apenas candidatos que estão em fase de "Finalizada" (ou seja, contratados)
+    # ou que você queira monitorar o onboarding
+    df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
+
+    if not df_onboarding.empty:
+        for _, row in df_onboarding.iterrows():
+            with st.expander(f"🚀 Onboarding: {row['candidato']} ({row['vaga_vinculada']})"):
+                with st.form(f"form_onb_{row['id']}"):
+                    
+                    # Data de Início Geral
+                    v_ini = st.date_input("📅 Data Prevista de Início", 
+                                         value=row.get('data_inicio') if row.get('data_inicio') else date.today())
+                    
+                    st.divider()
+                    
+                    # Funções auxiliares para organizar as colunas de Check + Data
+                    def onb_row(label, col_check, col_date, key_check, key_date):
+                        c1, c2 = st.columns([1, 2])
+                        check = c1.checkbox(label, value=bool(row.get(key_check, False)), key=f"chk_{key_check}_{row['id']}")
+                        dt = c2.date_input("Data da ação", value=row.get(key_date) if row.get(key_date) else date.today(), key=f"dt_{key_date}_{row['id']}")
+                        return check, dt
+
+                    # Renderização dos campos solicitados
+                    c_prop, d_prop = onb_row("Envio da Proposta", "envio_proposta", "data_proposta", "envio_proposta", "data_proposta")
+                    c_doc, d_doc = onb_row("Solicitação de Documentos", "solic_documentos", "data_documentos", "solic_documentos", "data_documentos")
+                    c_foto, d_foto = onb_row("Foto e Curiosidades", "foto_curiosidades", "data_foto_curiosidades", "foto_curiosidades", "data_foto_curiosidades") # Ajuste de nome se necessário
+                    c_cont, d_cont = onb_row("Solicitação de Contrato", "solic_contrato", "data_contrato", "solic_contrato", "data_contrato")
+                    c_acess, d_acess = onb_row("Equipamentos e Acessos", "solic_acessos", "data_equipamentos", "solic_acessos", "data_equipamentos")
+
+                    if st.form_submit_button("ATUALIZAR ONBOARDING"):
+                        executar_sql("""
+                            UPDATE candidatos SET 
+                            data_inicio=:di,
+                            envio_proposta=:cp, data_proposta=:dp,
+                            solic_documentos=:cd, data_documentos=:dd,
+                            solic_contrato=:cc, data_contrato=:dc,
+                            solic_acessos=:ca, data_equipamentos=:de
+                            WHERE id=:id
+                        """, {
+                            "di": v_ini, "cp": c_prop, "dp": d_prop, "cd": c_doc, "dd": d_doc,
+                            "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, "id": row['id']
+                        })
+                        st.success("Progresso de onboarding salvo!")
+                        st.rerun()
+    else:
+        st.info("Nenhum candidato com status 'Finalizada' para iniciar onboarding.")
 
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
@@ -537,6 +657,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
