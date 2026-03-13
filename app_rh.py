@@ -700,7 +700,7 @@ elif menu == "💸 OUTROS PAGAMENTOS":
     with st.expander("➕ LANÇAR NOVO PAGAMENTO", expanded=True):
         with st.form("form_pg_geral"):
             c1, c2 = st.columns(2)
-            epg = epg = st.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender", "ETUS", "BHAZ", "Evolution", "E3J"], key="pg_e_new")
+            epg = epg = st.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender"], key="pg_e_new")
             mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_m_new")
             
             c3, c4 = st.columns([1, 2])
