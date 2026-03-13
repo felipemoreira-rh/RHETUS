@@ -156,7 +156,8 @@ with engine.begin() as conn:
             pass
 # --- 5. SIDEBAR ---
 with st.sidebar:
-    if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
+    if os.path.exists("logo.png"): 
+        st.image("logo.png", use_container_width=True)
     st.divider()
     area_sel = st.selectbox("GERENCIAMENTO", ["RH - Recrutamento", "DP - Departamento Pessoal", "Financeiro & Notas"])
     
@@ -165,6 +166,7 @@ with st.sidebar:
     elif area_sel == "DP - Departamento Pessoal":
         menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD DP", "🎓 ESTAGIÁRIOS", "👥 COLABORADORES", "⏳ PERÍODO DE EXPERIÊNCIA"])
     else:
+        # Importante: o texto aqui deve ser exatamente igual ao usado nos 'elif menu == ...'
         menu = st.radio("NAVEGAÇÃO", ["🍔 IFOOD", "💸 OUTROS PAGAMENTOS"])
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
@@ -722,6 +724,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
