@@ -312,9 +312,10 @@ elif menu == "⚙️ CANDIDATOS":
                             executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
                             st.rerun()
 # --- 9. MÓDULO ONBOARDING (DESIGN COMPACTO EM 2 COLUNAS) ---
+# --- 9. MÓDULO ONBOARDING (COM EXPANDERS E DESIGN COMPACTO) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
-    st.caption("Organização e prazos para a entrada de novos colaboradores.")
+    st.caption("Clique no nome do candidato para expandir e gerir as etapas.")
     
     df_c = carregar_dados("candidatos")
     # Filtramos apenas candidatos contratados (status Finalizada)
@@ -322,15 +323,12 @@ elif menu == "🚀 ONBOARDING":
 
     if not df_onboarding.empty:
         for _, row in df_onboarding.iterrows():
-            with st.container(border=True):
-                # Cabeçalho do Card
-                col_h1, col_h2 = st.columns([3, 1])
-                col_h1.markdown(f"#### 👤 {row['candidato']}")
-                col_h2.info(f"📍 {row['vaga_vinculada']}")
+            # O st.expander permite minimizar e expandir a visualização
+            with st.expander(f"👤 {row['candidato']} | Vaga: {row['vaga_vinculada']}"):
                 
-                with st.form(f"form_onb_cols_{row['id']}"):
-                    # Data de Início Centralizada
-                    st.markdown("**📅 Planejamento de Entrada**")
+                with st.form(f"form_onb_exp_{row['id']}"):
+                    # Linha 1: Planeamento de Data
+                    st.markdown("**📅 Planeamento de Entrada**")
                     v_ini = st.date_input("Data Prevista de Início", 
                                          value=row.get('data_inicio') if row.get('data_inicio') else date.today(),
                                          label_visibility="collapsed")
@@ -339,7 +337,6 @@ elif menu == "🚀 ONBOARDING":
                     
                     # Função interna para renderizar as linhas de checklist
                     def render_onb_row(label, icon, key_check, key_date):
-                        # Layout interno: Checkbox pequeno, Texto e Data
                         r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
                         with r_c1:
                             check = st.checkbox("", value=bool(row.get(key_check, False)), key=f"chk_{key_check}_{row['id']}")
@@ -352,7 +349,7 @@ elif menu == "🚀 ONBOARDING":
                                               label_visibility="collapsed")
                         return check, dt
 
-                    # DIVISÃO EM DUAS COLUNAS PRINCIPAIS
+                    # Organização em duas colunas dentro do expander
                     st.markdown("**📝 Checklist de Processos**")
                     col_esq, col_dir = st.columns(2)
 
@@ -368,9 +365,8 @@ elif menu == "🚀 ONBOARDING":
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # Botão de Salvar
-                    _, col_btn, _ = st.columns([1, 1, 1])
-                    if col_btn.form_submit_button("💾 SALVAR", use_container_width=True):
+                    # Botão de Gravar
+                    if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
                         executar_sql("""
                             UPDATE candidatos SET 
                             data_inicio=:di,
@@ -385,12 +381,14 @@ elif menu == "🚀 ONBOARDING":
                             "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, 
                             "bv": c_bv, "dbv": d_bv, "id": row['id']
                         })
-                        st.success(f"Progresso de {row['candidato']} salvo!")
+                        st.success(f"Onboarding de {row['candidato']} atualizado!")
                         st.rerun()
-            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Pequeno espaçamento entre expanders
+            st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+            
     else:
-        st.info("Nenhum candidato em fase de Onboarding (Status 'Finalizada').")
-        
+        st.info("Não existem candidatos contratados para onboarding no momento.")
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
@@ -712,6 +710,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
