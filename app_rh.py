@@ -449,7 +449,7 @@ elif menu == "⚙️ CANDIDATOS":
                             executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
                             st.rerun()
 
-# --- 9. MÓDULO ONBOARDING (COM EXPANDERS E DESIGN COMPACTO) ---
+# --- 9. MÓDULO ONBOARDING (DESIGN COMPACTO COM AUTOMAÇÃO) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     df_c = carregar_dados("candidatos")
@@ -458,139 +458,87 @@ elif menu == "🚀 ONBOARDING":
     df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
 
     if not df_onboarding.empty:
+        # 1. Definimos a função auxiliar fora do loop de formulários para evitar erros
+        def render_onb_row(label, icon, key_check, key_date, row_data):
+            r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
+            with r_c1:
+                # O checkbox recupera o valor atual do banco
+                check = st.checkbox("", value=bool(row_data.get(key_check, False)), key=f"chk_{key_check}_{row_data['id']}")
+            with r_c2:
+                st.markdown(f"{icon} {label}")
+            with r_c3:
+                # O date_input recupera a data ou define hoje como padrão
+                val_data = row_data.get(key_date)
+                dt = st.date_input("Data", 
+                                  value=pd.to_datetime(val_data).date() if val_data else date.today(), 
+                                  key=f"dt_{key_date}_{row_data['id']}",
+                                  label_visibility="collapsed")
+            return check, dt
+
         for _, row in df_onboarding.iterrows():
             with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
                 with st.form(key=f"onb_form_{row['id']}"):
-                    col1, col2 = st.columns(2)
                     
-                    # 1. Campo de Data de Início
-                    v_ini = col1.date_input("Data de Início", 
-                                          value=pd.to_datetime(row['data_inicio']).date() if row['data_inicio'] else date.today())
+                    # --- Seção de Início ---
+                    st.markdown("**📅 Planejamento**")
+                    v_ini = st.date_input("Data Prevista de Início", 
+                                          value=pd.to_datetime(row['data_inicio']).date() if row['data_inicio'] else date.today(),
+                                          key=f"ini_{row['id']}")
                     
                     st.divider()
-                    st.write("📋 **Checklist de Entrada**")
-                    
-                    # Organização dos Checkboxes
-                    c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')))
-                    c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')))
-                    
-                    # CAMPO FOTO/CURIOSIDADES (O GATILHO)
-                    c_foto = st.checkbox("Foto/Curiosidades", value=bool(row.get('foto_curiosidades')))
-                    d_foto = st.date_input("Previsão/Data Envio Foto", value=date.today())
-                    
-                    c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')))
-                    c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')))
-
-                    if st.form_submit_button("💾 GRAVAR PROGRESSO"):
-                        # Lógica da Automação: 
-                        # Se a caixa foi marcada AGORA e antes estava desmarcada
-                        if c_foto and not bool(row.get('foto_curiosidades')):
-                            if row.get('email'):
-                                enviou = enviar_email_foto(row['email'], row['candidato'])
-                                if enviou:
-                                    st.toast(f"📧 E-mail enviado para {row['candidato']}!", icon="✅")
-                            else:
-                                st.warning("E-mail não enviado: Candidato sem e-mail cadastrado.")
-
-                        # Salva no Banco de Dados
-                        params = {
-                            "di": v_ini, "cp": c_prop, "cd": c_doc,
-                            "cf": c_foto, "dfc": d_foto,
-                            "cc": c_cont, "ca": c_acess, "id": row['id']
-                        }
-                        executar_sql("""
-                            UPDATE candidatos SET 
-                            data_inicio=:di, envio_proposta=:cp, solic_documentos=:cd,
-                            foto_curiosidades=:cf, data_foto_curiosidades=:dfc,
-                            solic_contrato=:cc, solic_acessos=:ca
-                            WHERE id=:id
-                        """, params)
-                        st.rerun()
-    else:
-        st.info("Nenhum candidato em fase de Onboarding.")
-if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
-    # Verificação do gatilho de e-mail
-    # Se a foto foi marcada agora (c_foto) e antes era False (row['foto_curiosidades'])
-    if c_foto and not bool(row.get('foto_curiosidades')):
-        # Aqui você precisaria do e-mail do candidato no banco. 
-        # Vou assumir que você tem a coluna 'email' ou usaremos um placeholder
-        email_cand = row.get('email', "candidato@email.com") 
-        sucesso_email = enviar_email_foto(email_cand, row['candidato'])
-        if sucesso_email:
-            st.toast(f"📧 E-mail de orientações enviado para {row['candidato']}!", icon="📩")
-        else:
-            st.error("Falha ao enviar e-mail. Verifique as configurações de SMTP.")
-
-    # Executa o SQL normalmente
-    executar_sql("""
-        UPDATE candidatos SET 
-        data_inicio=:di,
-        envio_proposta=:cp, data_proposta=:dp,
-        solic_documentos=:cd, data_documentos=:dd,
-        foto_curiosidades=:cf, data_foto_curiosidades=:dfc, -- Certifique-se que esta coluna existe
-        solic_contrato=:cc, data_contrato=:dc,
-        solic_acessos=:ca, data_equipamentos=:de,
-        boas_vindas=:bv, data_boas_vindas=:dbv
-        WHERE id=:id
-    """, {
-        "di": v_ini, "cp": c_prop, "dp": d_prop, "cd": c_doc, "dd": d_doc,
-        "cf": c_foto, "dfc": d_foto,
-        "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, 
-        "bv": c_bv, "dbv": d_bv, "id": row['id']
-    })
-    st.success(f"Onboarding de {row['candidato']} atualizado!")
-    st.rerun()
-    st.divider()
-                    
-    def render_onb_row(label, icon, key_check, key_date):
-                        r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
-                        with r_c1:
-                            check = st.checkbox("", value=bool(row.get(key_check, False)), key=f"chk_{key_check}_{row['id']}")
-                        with r_c2:
-                            st.markdown(f"{icon} {label}")
-                        with r_c3:
-                            dt = st.date_input("Data", 
-                                              value=row.get(key_date) if row.get(key_date) else date.today(), 
-                                              key=f"dt_{key_date}_{row['id']}",
-                                              label_visibility="collapsed")
-                        return check, dt
-
-                    
                     st.markdown("**📝 Checklist de Processos**")
                     col_esq, col_dir = st.columns(2)
 
                     with col_esq:
-                        c_prop, d_prop = render_onb_row("Proposta", "📨", "envio_proposta", "data_proposta")
-                        c_doc, d_doc = render_onb_row("Documentos", "📂", "solic_documentos", "data_documentos")
-                        c_foto, d_foto = render_onb_row("Foto/Curiosidades", "📸", "foto_curiosidades", "data_foto_curiosidades")
+                        c_prop, d_prop = render_onb_row("Proposta", "📨", "envio_proposta", "data_proposta", row)
+                        c_doc, d_doc = render_onb_row("Documentos", "📂", "solic_documentos", "data_documentos", row)
+                        # Este é o campo que dispara o e-mail
+                        c_foto, d_foto = render_onb_row("Foto/Curiosidades", "📸", "foto_curiosidades", "data_foto_curiosidades", row)
 
                     with col_dir:
-                        c_cont, d_cont = render_onb_row("Contrato", "✍️", "solic_contrato", "data_contrato")
-                        c_acess, d_acess = render_onb_row("Equipamentos", "💻", "solic_acessos", "data_equipamentos")
-                        c_bv, d_bv = render_onb_row("Boas-vindas", "🎉", "boas_vindas", "data_boas_vindas")
+                        c_cont, d_cont = render_onb_row("Contrato", "✍️", "solic_contrato", "data_contrato", row)
+                        c_acess, d_acess = render_onb_row("Equipamentos", "💻", "solic_acessos", "data_equipamentos", row)
+                        c_bv, d_bv = render_onb_row("Boas-vindas", "🎉", "boas_vindas", "data_boas_vindas", row)
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # Botão de Gravar
+                    # --- Ação de Gravar ---
                     if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
+                        
+                        # GATILHO DE E-MAIL: 
+                        # Se marcou 'Foto' agora e antes estava desmarcado no banco
+                        if c_foto and not bool(row.get('foto_curiosidades')):
+                            email_destino = row.get('email')
+                            if email_destino:
+                                with st.spinner("Enviando e-mail de orientações..."):
+                                    sucesso = enviar_email_foto(email_destino, row['candidato'])
+                                    if sucesso:
+                                        st.toast(f"📧 E-mail enviado para {row['candidato']}!", icon="✅")
+                                    else:
+                                        st.error("Erro ao enviar e-mail. Verifique o SMTP/Secrets.")
+                            else:
+                                st.warning("E-mail não enviado: Candidato sem e-mail cadastrado.")
+
+                        # Atualização no Banco de Dados
                         executar_sql("""
                             UPDATE candidatos SET 
                             data_inicio=:di,
                             envio_proposta=:cp, data_proposta=:dp,
                             solic_documentos=:cd, data_documentos=:dd,
+                            foto_curiosidades=:cf, data_foto_curiosidades=:dfc,
                             solic_contrato=:cc, data_contrato=:dc,
                             solic_acessos=:ca, data_equipamentos=:de,
                             boas_vindas=:bv, data_boas_vindas=:dbv
                             WHERE id=:id
                         """, {
                             "di": v_ini, "cp": c_prop, "dp": d_prop, "cd": c_doc, "dd": d_doc,
+                            "cf": c_foto, "dfc": d_foto,
                             "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, 
                             "bv": c_bv, "dbv": d_bv, "id": row['id']
                         })
-                        st.success(f"Onboarding de {row['candidato']} atualizado!")
+                        st.success(f"Dados de {row['candidato']} atualizados!")
                         st.rerun()
             
-            # Pequeno espaçamento entre expanders
             st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
             
     else:
