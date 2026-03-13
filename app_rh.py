@@ -131,9 +131,12 @@ with engine.begin() as conn:
         );
     """))
 
-  # 2. MIGRATIONS (Atualização de tabelas existentes)
-    # Criamos a lista de comandos necessários
+  # 2. MIGRATIONS 
     migrations = [
+    "ALTER TABLE pagamentos_gerais ADD COLUMN IF NOT EXISTS valor_pg NUMERIC;",
+    "ALTER TABLE pagamentos_gerais ADD COLUMN IF NOT EXISTS data_envio DATE;",
+    "ALTER TABLE pagamentos_gerais ADD COLUMN IF NOT EXISTS data_pagamento DATE;",
+    "ALTER TABLE pagamentos_gerais ADD COLUMN IF NOT EXISTS motivo TEXT;"
         "ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;",
@@ -145,9 +148,7 @@ with engine.begin() as conn:
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_equipamentos DATE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS boas_vindas BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_boas_vindas DATE;"
-    ] # <--- O erro estava aqui: faltava este colchete antes do loop
-
-    # Executamos cada migração individualmente
+    ]
     for sql in migrations:
         try:
             conn.execute(text(sql))
@@ -512,40 +513,78 @@ elif menu == "🎓 ESTAGIÁRIOS":
                     executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
 
 # --- 12. MÓDULO FINANCEIRO (PAGAMENTOS GERAIS) ---
+# --- 12. MÓDULO FINANCEIRO (PAGAMENTOS GERAIS ATUALIZADO) ---
 elif menu == "💰 PAGAMENTOS GERAIS":
-    st.subheader("Gerenciamento de Pagamentos Gerais")
-    st.caption("Faça o upload e a gestão de comprovantes e boletos (Exceto iFood).")
+    st.subheader("Gerenciamento de Pagamentos")
+    st.caption("Controle de boletos, comprovantes e motivos de saída financeira.")
 
     with st.expander("➕ LANÇAR NOVO PAGAMENTO"):
-        with st.form("npg"):
-            # Removida a Categoria. Mantendo Empresa e Mês em colunas.
-            col1, col2 = st.columns(2)
-            epg = col1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"])
-            mpg = col2.selectbox("Mês de Referência", 
+        with st.form("npg_completo"):
+            # Linha 1: Empresa e Mês
+            c1, c2 = st.columns(2)
+            epg = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"])
+            mpg = c2.selectbox("Mês de Referência", 
                                  ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
                                   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
             
-            upg = st.file_uploader("Upload do Comprovante/Boleto (PDF)", type=["pdf"])
+            # Linha 2: Valor e Motivo
+            c3, c4 = st.columns([1, 2])
+            val_pg = c3.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
+            motivo_pg = c4.text_input("Motivo do Pagamento (Ex: Internet, Aluguel...)")
+
+            # Linha 3: Datas
+            c5, c6 = st.columns(2)
+            d_envio = c5.date_input("Data de Envio", value=date.today())
+            d_pago = c6.date_input("Data de Pagamento", value=date.today())
+
+            # Upload
+            upg = st.file_uploader("Anexar Comprovante (PDF)", type=["pdf"])
             
             if st.form_submit_button("REGISTRAR PAGAMENTO"):
                 if upg:
                     pdf_bytes = upg.read()
-                    # Na query SQL, enviamos a categoria como 'Geral' ou vazio
                     executar_sql("""
-                        INSERT INTO pagamentos_gerais (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload) 
-                        VALUES (:e, :c, :m, :a, :n, :d)
+                        INSERT INTO pagamentos_gerais 
+                        (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload, valor_pg, data_envio, data_pagamento, motivo) 
+                        VALUES (:e, :c, :m, :a, :n, :d, :v, :de, :dp, :mo)
                     """, {
-                        "e": epg, 
-                        "c": "Geral", # Valor padrão fixo já que removemos o campo
-                        "m": mpg, 
-                        "a": pdf_bytes, 
-                        "n": upg.name, 
-                        "d": date.today()
+                        "e": epg, "c": "Geral", "m": mpg, "a": pdf_bytes, "n": upg.name, 
+                        "d": date.today(), "v": val_pg, "de": d_envio, "dp": d_pago, "mo": motivo_pg
                     })
                     st.success("Pagamento registrado com sucesso!")
                     st.rerun()
                 else:
-                    st.error("Por favor, anexe o arquivo PDF.")
+                    st.error("Por favor, anexe o comprovante.")
+
+    # Exibição dos dados com resumo financeiro
+    df_pg = carregar_dados("pagamentos_gerais")
+    if not df_pg.empty:
+        st.divider()
+        
+        # Filtros e Resumo
+        f_emp = st.multiselect("Filtrar Empresa", df_pg['empresa'].unique(), default=df_pg['empresa'].unique())
+        df_f = df_pg[df_pg['empresa'].isin(f_emp)]
+        
+        # Mostra o total acumulado dos itens filtrados
+        total_pago = df_f['valor_pg'].sum() if 'valor_pg' in df_f.columns else 0
+        st.metric("Total em Pagamentos", f"R$ {total_pago:,.2f}")
+
+        for _, row in df_f.iterrows():
+            # Título do expander agora mais informativo
+            titulo = f"💰 R$ {row.get('valor_pg', 0):,.2f} | {row['empresa']} - {row['motivo'] or 'Sem motivo'}"
+            with st.expander(titulo):
+                col_inf1, col_inf2 = st.columns(2)
+                col_inf1.write(f"**Mês:** {row['mes_referencia']}")
+                col_inf1.write(f"**Enviado em:** {row.get('data_envio', '---')}")
+                col_inf2.write(f"**Pago em:** {row.get('data_pagamento', '---')}")
+                col_inf2.write(f"**Arquivo:** {row['nome_arquivo']}")
+                
+                st.divider()
+                c_dl, c_del = st.columns(2)
+                c_dl.download_button("📥 Baixar PDF", row['arquivo_pg'], file_name=row['nome_arquivo'], key=f"dl_{row['id']}")
+                if c_del.button(f"🗑️ Excluir", key=f"del_{row['id']}"):
+                    executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id": row['id']})
+                    st.rerun()
 
     # Exibição dos dados
     df_pg = carregar_dados("pagamentos_gerais")
@@ -695,6 +734,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
