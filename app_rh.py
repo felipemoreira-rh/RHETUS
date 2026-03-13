@@ -280,6 +280,8 @@ with engine.begin() as conn:
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS email TEXT;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS foto_curiosidades BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_foto_curiosidades DATE;"
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicado_por TEXT;",
+    "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS valor_bonus REAL DEFAULT 0.0;"
     ]
     for sql in migrations:
         try:
@@ -391,6 +393,17 @@ elif menu == "⚙️ CANDIDATOS":
     
     with st.expander("➕ NOVO CANDIDATO"):
         with st.form("nc"):
+            c1, c2 = st.columns(2)
+            nc = c1.text_input("Nome Completo")
+            ec = c2.text_input("E-mail")
+            indicacao = st.text_input("Indicado por (Nome do Colaborador)")
+            valor_ind = st.number_input("Valor do Bônus (R$)", value=0.0)
+
+if st.form_submit_button("ADICIONAR"):
+    executar_sql("""
+        INSERT INTO candidatos (candidato, email, indicado_por, valor_bonus, status_geral) 
+        VALUES (:n, :e, :ind, :v, 'Triagem')
+    """, {"n": nc, "e": ec, "ind": indicacao, "v": valor_ind})
             c1, c2 = st.columns(2)
             nc = c1.text_input("Nome")
             ec = c2.text_input("E-mail") # Novo Campo
