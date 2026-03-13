@@ -172,7 +172,7 @@ with st.sidebar:
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
 # --- 6. MÓDULO INDICADORES (COM CONTADOR DE DIAS) ---
-if menu == "📊 INDICADORES":
+if menu == "📊 DASHBOARD RH":
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
     
@@ -710,6 +710,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
