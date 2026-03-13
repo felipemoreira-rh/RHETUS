@@ -90,12 +90,31 @@ st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
 # --- 6. MÓDULO INDICADORES ---
 if menu == "📊 INDICADORES":
-    df_v = carregar_dados("vagas"); df_c = carregar_dados("candidatos")
+    df_v = carregar_dados("vagas")
+    df_c = carregar_dados("candidatos")
+    
     if not df_v.empty:
+        # Filtro de vagas abertas para o cálculo de tempo
+        vagas_abertas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
+        
+        # Cálculo da Média de Dias (Tempo de Abertura)
+        if not vagas_abertas.empty:
+            vagas_abertas['data_abertura'] = pd.to_datetime(vagas_abertas['data_abertura']).dt.date
+            hoje = date.today()
+            vagas_abertas['dias_aberta'] = vagas_abertas['data_abertura'].apply(lambda x: (hoje - x).days if x else 0)
+            media_dias = vagas_abertas['dias_aberta'].mean()
+        else:
+            media_dias = 0
+
+        # Exibição dos KPIs
         c1, c2, c3 = st.columns(3)
-        c1.metric("📌 VAGAS ATIVAS", len(df_v[df_v['status_vaga'] == 'Aberta']))
+        c1.metric("📌 VAGAS ATIVAS", len(vagas_abertas))
+        c2.metric("⏳ MÉDIA TEMPO ABERTA", f"{int(media_dias)} dias") # Novo Indicador
+        # O c3 fica livre para futuras métricas ou alinhamento visual
+        
         if not df_c.empty:
-            st.divider(); col_l, col_r = st.columns(2)
+            st.divider()
+            col_l, col_r = st.columns(2)
             with col_l:
                 st.subheader("📊 Funil de Recrutamento")
                 ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
@@ -518,6 +537,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
