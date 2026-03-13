@@ -51,33 +51,21 @@ def carregar_dados(tabela):
 
 # --- 4. BANCO DE DADOS (INICIALIZAÇÃO ROBUSTA) ---
 with engine.begin() as conn:
-    # Lista de comandos para garantir que todas as tabelas existam
-    comandos = [
-        with engine.begin() as conn:
-    try:
-        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;"))
-        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;"))
-    except: pass
-        "CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);",
-        "CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);",
-        "CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);",
-        "CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);",
-        "CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);",
-        "CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, cad_starbem BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, ifood_ativo BOOLEAN DEFAULT FALSE, equipamento_entregue BOOLEAN DEFAULT FALSE);",
-        """CREATE TABLE IF NOT EXISTS controle_experiencia (
-            id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, 
-            av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, 
-            av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT
-        );"""
-    ]
-    
-    for cmd in comandos:
-        conn.execute(text(cmd))
-    
-    # Garantir que a coluna 'empresa' exista na tabela vagas (Migration manual)
+    # 1. Criação das tabelas base
+    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE, indicacao BOOLEAN DEFAULT FALSE, nome_indicador TEXT);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, cad_starbem BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, ifood_ativo BOOLEAN DEFAULT FALSE, equipamento_entregue BOOLEAN DEFAULT FALSE);"))
+    conn.execute(text("CREATE TABLE IF NOT EXISTS controle_experiencia (id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT);"))
+
+    # 2. Atualizações de colunas (Migrations) para tabelas existentes
     try:
         conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;"))
-    except:
+        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;"))
+    except Exception as e:
         pass
 
 # --- 5. SIDEBAR ---
@@ -619,6 +607,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
