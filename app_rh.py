@@ -90,7 +90,7 @@ def get_engine():
 
 engine = get_engine()
 
-# --- 3. FUNÇÕES DE APOIO ---
+# --- 3. FUNÇÕES DE APOIO E AUTOMAÇÃO ---
 def executar_sql(query, params=None):
     try:
         with engine.begin() as conn:
@@ -98,7 +98,74 @@ def executar_sql(query, params=None):
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro SQL: {e}"); return False
+        st.error(f"Erro SQL: {e}")
+        return False
+
+# --- FUNÇÃO DE ENVIO DE E-MAIL (ONBOARDING) ---
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+
+def enviar_email_foto(email_candidato, nome_candidato):
+    try:
+        meu_email = "seu_email@gmail.com"  # Substitua pelo seu e-mail
+        minha_senha = st.secrets["email"]["password"] 
+        
+        msg = MIMEMultipart()
+        msg['Subject'] = f"Boas-vindas Etus! 🚀 - Foto e Curiosidades de {nome_candidato}"
+        msg['From'] = meu_email
+        msg['To'] = email_candidato
+
+        corpo = f"""
+        <html>
+        <body style="font-family: sans-serif;">
+            <p>Olá, <strong>{nome_candidato}</strong>!</p>
+            <p>Parabéns pela sua aprovação em nosso processo seletivo! 🎉<br>
+            Agora, gostaríamos de conhecer um pouco mais sobre você.</p>
+            <p>Por isso, pedimos que nos envie:</p>
+            <ul>
+                <li>Uma foto sua, conforme as orientações abaixo;</li>
+                <li>Três curiosidades sobre você (vale hobby, talento, mania, lugar favorito, algo inusitado…);</li>
+            </ul>
+            <p>Essas informações serão usadas na sua apresentação à equipe. 😄<br>
+            <strong>Contamos com seu envio até 22/01/2026.</strong></p>
+            <p>🎯 <strong>Orientações para a foto:</strong><br>
+            - Foto do peito para cima;<br>
+            - Fundo neutro (parede branca, cinza ou clara);<br>
+            - Corpo reto e olhando para frente;<br>
+            - De preferência sorrindo;<br>
+            - Evite bonés, óculos escuros ou filtros.</p>
+            <p>👉 <strong>Gentileza preencher:</strong> <a href='https://docs.google.com/forms/d/e/1FAIpQLSd1o4x5jALKryUJraNB7GZB6xyJXJj5nRTs30dw_0ZFoVf9KQ/viewform?usp=sf_link'>Link do Formulário</a></p>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(corpo, 'html'))
+
+        # Tentativa de anexar a imagem que você vai subir no GitHub
+        if os.path.exists("orientacao_foto.jpg"):
+            with open("orientacao_foto.jpg", 'rb') as f:
+                img = MIMEImage(f.read())
+                img.add_header('Content-Disposition', 'attachment', filename="orientacao_foto.jpg")
+                msg.attach(img)
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(meu_email, minha_senha)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao enviar e-mail: {e}")
+        return False
+
+@st.cache_data(ttl=1)
+def carregar_dados(tabela):
+    try:
+        with engine.connect() as conn:
+            return pd.read_sql(text(f"SELECT * FROM {tabela} ORDER BY id DESC"), conn)
+    except:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=1)
 def carregar_dados(tabela):
@@ -208,6 +275,9 @@ with engine.begin() as conn:
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS boas_vindas BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_boas_vindas DATE;"
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS email TEXT;"
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS email TEXT;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS foto_curiosidades BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_foto_curiosidades DATE;"
     ]
     for sql in migrations:
         try:
@@ -318,17 +388,14 @@ elif menu == "⚙️ CANDIDATOS":
     df_c = carregar_dados("candidatos")
     
     with st.expander("➕ NOVO CANDIDATO"):
-    with st.form("nc"):
-        c1, c2 = st.columns(2)
-        nc = c1.text_input("Nome Completo")
-        ec = c2.text_input("E-mail do Candidato") # NOVO CAMPO
-        vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
-        
-        if st.form_submit_button("ADICIONAR"):
-            if nc and ec:
+        with st.form("nc"):
+            c1, c2 = st.columns(2)
+            nc = c1.text_input("Nome")
+            ec = c2.text_input("E-mail") # Novo Campo
+            vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
+            if st.form_submit_button("ADICIONAR"):
                 executar_sql("INSERT INTO candidatos (candidato, email, vaga_vinculada, status_geral) VALUES (:n, :e, :v, 'Triagem')", 
                             {"n":nc, "e":ec, "v":vnc})
-                st.success("Candidato cadastrado!")
                 st.rerun()
             else:
                 st.error("Por favor, preencha Nome e E-mail.")
@@ -834,6 +901,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
