@@ -4,9 +4,9 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 
 def enviar_email_foto(email_candidato, nome_candidato):
-    # Configurações do Servidor (Exemplo Gmail)
+  
     meu_email = "seu_email@gmail.com"
-    minha_senha = st.secrets["email"]["password"] # Recomendo guardar nos secrets
+    minha_senha = st.secrets["email"]["password"] 
     
     msg = MIMEMultipart()
     msg['Subject'] = f"Boas-vindas Etus! 🚀 - Foto e Curiosidades de {nome_candidato}"
@@ -39,14 +39,14 @@ def enviar_email_foto(email_candidato, nome_candidato):
     """
     msg.attach(MIMEText(corpo, 'html'))
 
-    # Anexando a imagem de orientação que você enviou
+   
     try:
         with open("orientacao_foto.jpg", 'rb') as f:
             img = MIMEImage(f.read())
             img.add_header('Content-Disposition', 'attachment', filename="orientacao_foto.jpg")
             msg.attach(img)
     except:
-        pass # Caso o arquivo não exista, envia apenas o texto
+        pass 
 
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -111,7 +111,7 @@ from email.mime.image import MIMEImage
 
 def enviar_email_foto(email_candidato, nome_candidato):
     try:
-        meu_email = "seu_email@gmail.com"  # Substitua pelo seu e-mail
+        meu_email = "seu_email@gmail.com"  
         minha_senha = st.secrets["email"]["password"] 
         
         msg = MIMEMultipart()
@@ -144,7 +144,7 @@ def enviar_email_foto(email_candidato, nome_candidato):
         """
         msg.attach(MIMEText(corpo, 'html'))
 
-        # Tentativa de anexar a imagem que você vai subir no GitHub
+       
         if os.path.exists("orientacao_foto.jpg"):
             with open("orientacao_foto.jpg", 'rb') as f:
                 img = MIMEImage(f.read())
@@ -288,6 +288,7 @@ with engine.begin() as conn:
             conn.execute(text(sql))
         except Exception:
             pass
+            
 # --- 5. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): 
@@ -335,6 +336,7 @@ if menu == "📊 INDICADORES":
             with col_r:
                 st.subheader("👥 Candidatos por Vaga")
                 st.plotly_chart(px.pie(df_c, names='vaga_vinculada', hole=0.4), use_container_width=True)
+                
 # --- 7. MÓDULO VAGAS (COM EDIÇÃO COMPLETA) ---
 elif menu == "🏢 VAGAS":
     lista_empresas = ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"]
@@ -387,11 +389,9 @@ elif menu == "🏢 VAGAS":
                 st.rerun()
 
 # --- 8. MÓDULO CANDIDATOS (EDIÇÃO CORRIGIDA) ---
-# --- 8. MÓDULO CANDIDATOS (VERSÃO ÚNICA E CORRIGIDA) ---
 elif menu == "⚙️ CANDIDATOS":
     st.markdown("### 👥 Gestão de Candidatos")
     
-    # Carregamento de dados (Vagas e Candidatos)
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
     
@@ -427,17 +427,14 @@ elif menu == "⚙️ CANDIDATOS":
 
     # 2. LISTAGEM AGRUPADA POR VAGA (Apenas uma vez)
     if not df_c.empty:
-        # Filtro Global de Busca
         busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar...")
         df_base = df_c[df_c['candidato'].str.contains(busca, case=False)] if busca else df_c
         
-        # Identificar vagas presentes nos dados filtrados
         vagas_com_candidatos = sorted(df_base['vaga_vinculada'].unique().tolist())
         
         if not vagas_com_candidatos:
             st.warning("Nenhum candidato encontrado.")
         else:
-            # Criar Abas
             abas = st.tabs(vagas_com_candidatos)
             
             for i, vaga_nome in enumerate(vagas_com_candidatos):
@@ -446,26 +443,21 @@ elif menu == "⚙️ CANDIDATOS":
                     st.caption(f"📌 {len(df_vaga)} candidato(s) nesta vaga")
                     
                     for _, cand in df_vaga.iterrows():
-                        # Ícone por Status
                         st_atual = cand['status_geral']
                         icone = "🔵" if st_atual == 'Triagem' else "🟢" if st_atual == 'Finalizada' else "🟡"
                         
                         with st.expander(f"{icone} {cand['candidato'].upper()}"):
-                            # Modo de edição
                             edit_mode = st.toggle("🔓 Liberar Edição", key=f"tog_ed_{cand['id']}")
                             
                             with st.form(key=f"edit_form_final_{cand['id']}"):
                                 col1, col2 = st.columns(2)
                                 
-                                # Campos Editáveis
                                 edit_nome = col1.text_input("Nome", value=cand['candidato'], disabled=not edit_mode)
                                 edit_email = col2.text_input("E-mail", value=cand.get('email', ''), disabled=not edit_mode)
                                 
-                                # Index da Vaga
                                 idx_v = v_list.index(cand['vaga_vinculada']) if cand['vaga_vinculada'] in v_list else 0
                                 edit_vaga = col1.selectbox("Vaga", v_list, index=idx_v, disabled=not edit_mode)
                                 
-                                # Index do Status
                                 st_opts = ["Triagem", "Entrevista", "Finalizada", "Reprovado"]
                                 idx_s = st_opts.index(st_atual) if st_atual in st_opts else 0
                                 edit_status = col2.selectbox("Status", st_opts, index=idx_s, disabled=not edit_mode)
@@ -473,7 +465,6 @@ elif menu == "⚙️ CANDIDATOS":
                                 edit_ind = col1.text_input("Indicado por", value=cand.get('indicado_por', ''), disabled=not edit_mode)
                                 edit_val = col2.number_input("Valor Bônus", value=float(cand.get('valor_bonus', 0)), disabled=not edit_mode)
 
-                                # Botões
                                 b_salvar = st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True, disabled=not edit_mode)
                                 b_excluir = st.form_submit_button("🗑️ EXCLUIR CANDIDATO", use_container_width=True)
 
@@ -498,10 +489,8 @@ elif menu == "⚙️ CANDIDATOS":
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     
-    # Carregamento dos dados
     df_c = carregar_dados("candidatos")
     
-    # Filtra apenas candidatos com status 'Finalizada' (Aprovados)
     if not df_c.empty:
         df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
     else:
@@ -509,23 +498,18 @@ elif menu == "🚀 ONBOARDING":
 
     if not df_onboarding.empty:
         for _, row in df_onboarding.iterrows():
-            # Título do Card Expansível
             expander_label = f"👤 {row['candidato']} - {row['vaga_vinculada']}"
             with st.expander(expander_label):
                 
-                # --- ALERTA DE BÔNUS DE INDICAÇÃO ---
-                # Exibe o alerta apenas se houver um indicador e um valor cadastrado
                 indicador = row.get('indicado_por')
                 valor = row.get('valor_bonus', 0)
                 
                 if indicador and valor > 0:
                     st.warning(f"💰 **PAGAMENTO DE INDICAÇÃO:** Este novo colaborador foi indicado por **{indicador}**. Valor do bônus a ser pago: **R$ {valor:.2f}**")
 
-                # Formulário de Onboarding
                 with st.form(key=f"form_onb_{row['id']}"):
                     st.markdown("**📅 Planejamento de Entrada**")
                     
-                    # Tratamento da data de início
                     data_ini_val = pd.to_datetime(row['data_inicio']).date() if row.get('data_inicio') else date.today()
                     v_ini = st.date_input("Data Prevista de Início", value=data_ini_val, key=f"date_ini_{row['id']}")
                     
@@ -538,22 +522,17 @@ elif menu == "🚀 ONBOARDING":
                         c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')), key=f"chk_prop_{row['id']}")
                         c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')), key=f"chk_doc_{row['id']}")
                         
-                        # CAMPO GATILHO PARA ENVIO DE E-MAIL
                         c_foto = st.checkbox("Foto/Curiosidades (Dispara E-mail)", value=bool(row.get('foto_curiosidades')), key=f"chk_foto_{row['id']}")
                     
                     with col_onb2:
                         c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')), key=f"chk_cont_{row['id']}")
                         c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')), key=f"chk_ace_{row['id']}")
                         
-                        # Data da foto
                         data_foto_val = pd.to_datetime(row.get('data_foto_curiosidades')).date() if row.get('data_foto_curiosidades') else date.today()
                         d_foto = st.date_input("Previsão Envio Foto", value=data_foto_val, key=f"date_foto_{row['id']}")
 
-                    # Botão de ação
                     if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
                         
-                        # 1. VERIFICAÇÃO DO GATILHO DE E-MAIL
-                        # Dispara se a caixa foi marcada agora e no banco estava desmarcada
                         if c_foto and not bool(row.get('foto_curiosidades')):
                             email_candidato = row.get('email')
                             if email_candidato:
@@ -586,11 +565,11 @@ elif menu == "🚀 ONBOARDING":
                             st.success(f"Progresso de {row['candidato']} atualizado!")
                             st.rerun()
 
-            # Pequeno espaçamento entre os cards
             st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             
     else:
         st.info("No momento, não há candidatos aprovados aguardando Onboarding.")
+        
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
@@ -599,10 +578,9 @@ elif menu == "📊 DASHBOARD DP":
     df_col = carregar_dados("colaboradores_ativos")
     df_est = carregar_dados("contratos_estagio")
     df_exp = carregar_dados("controle_experiencia")
-    df_c = carregar_dados("candidatos") # Necessário para o alerta de indicações
+    df_c = carregar_dados("candidatos") 
 
     if not df_col.empty:
-        # MÉTRICAS TOTAIS
         c1, c2, c3, c4 = st.columns(4)
         total_clt = len(df_col[df_col['tipo'] == 'CLT'])
         total_pj = len(df_col[df_col['tipo'] == 'PJ'])
@@ -615,7 +593,6 @@ elif menu == "📊 DASHBOARD DP":
 
         st.divider()
 
-        # GRÁFICOS LADO A LADO
         col_g1, col_g2 = st.columns(2)
         
         with col_g1:
@@ -636,23 +613,19 @@ elif menu == "📊 DASHBOARD DP":
             else:
                 st.info("Sem estagiários cadastrados para exibir no gráfico.")
 
-        # --- SEÇÃO DE ALERTAS ---
         st.divider()
         st.markdown('<div class="vaga-header">⚠️ PAINEL DE ALERTAS E PENDÊNCIAS</div>', unsafe_allow_html=True)
         
         col_a1, col_a2 = st.columns(2)
 
-        # ALERTA 1: AVALIAÇÕES DE EXPERIÊNCIA
         with col_a1:
             st.markdown("##### ⏳ Avaliações de 90 dias (Próximos 7 dias)")
             hoje = date.today()
             alertas_exp = []
             if not df_exp.empty:
                 for _, r in df_exp.iterrows():
-                    # Garantir que data_inicio é um objeto de data
                     data_inicio = pd.to_datetime(r['data_inicio']).date()
                     d90 = data_inicio + pd.Timedelta(days=90)
-                    # Alerta se não foi feito e se faltam 7 dias ou já venceu
                     if not r['av2_feito'] and (d90 - hoje).days <= 7:
                         alertas_exp.append(f"🟠 **{r['nome']}**: Vencimento em {d90.strftime('%d/%m/%Y')}")
             
@@ -667,12 +640,10 @@ elif menu == "📊 DASHBOARD DP":
             st.markdown("##### 💰 Bônus de Indicação (Pós 90 dias)")
             avisos_pagamento = []
             
-            # Filtra candidatos que foram indicados e contratados (Finalizada)
             if not df_c.empty:
                 contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicacao'] == True)]
                 
                 for _, cand in contratados_ind.iterrows():
-                    # Cruzar com a data de início real no controle de experiência
                     if not df_exp.empty:
                         exp_v = df_exp[df_exp['nome'] == cand['candidato']]
                         if not exp_v.empty:
@@ -692,6 +663,7 @@ elif menu == "📊 DASHBOARD DP":
                 st.write("Sem pagamentos de indicação pendentes no momento.")
     else:
         st.info("Adicione colaboradores ativos para visualizar os indicadores de DP.")
+        
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
@@ -774,7 +746,6 @@ elif menu == "💸 OUTROS PAGAMENTOS":
     st.markdown("### 🔍 Histórico de Pagamentos")
     df_pg = carregar_dados("pagamentos_gerais")
     if not df_pg.empty:
-        # Filtro rápido na tela
         f_emp = st.multiselect("Filtrar Empresa", df_pg['empresa'].unique(), default=df_pg['empresa'].unique())
         df_filtered = df_pg[df_pg['empresa'].isin(f_emp)]
         
@@ -795,7 +766,6 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
     df_if = carregar_dados("notas_fiscais_ifood")
     
     if not df_pg.empty:
-        # Métricas em Cards
         total_acumulado = df_pg['valor_pg'].sum()
         qtd_pagamentos = len(df_pg)
         qtd_ifood = len(df_if)
@@ -819,7 +789,6 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
         with col_g2:
             st.markdown("**📅 Gastos por Mês de Referência**")
             gastos_mes = df_pg.groupby('mes_referencia')['valor_pg'].sum().reset_index()
-            # Ordenação lógica dos meses
             meses_ordem = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             gastos_mes['mes_referencia'] = pd.Categorical(gastos_mes['mes_referencia'], categories=meses_ordem, ordered=True)
             gastos_mes = gastos_mes.sort_values('mes_referencia')
@@ -833,6 +802,7 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
         st.table(ranking.style.format({"valor_pg": "R$ {:,.2f}"}))
     else:
         st.info("Aguardando dados para gerar indicadores financeiros.")
+        
 # --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (REFORMULADO E COMPLETO) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
     st.subheader("Controle de Avaliação de Experiência (90 dias)")
@@ -858,23 +828,19 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
         if not df_exp.empty:
             for _, r in df_exp.iterrows():
                 d90 = r['data_inicio'] + pd.Timedelta(days=90)
-                # Status visual no título do expander
                 status_texto = "🟢 FINALIZADA" if r['av2_feito'] else "🟡 PENDENTE"
                 
                 with st.expander(f"{status_texto} | 👤 {r['nome']} | Limite: {d90.strftime('%d/%m/%Y')}"):
-                    # --- LINHA 1: CHECKBOX E DATA ---
                     c1, c2 = st.columns(2)
                     with c1:
                         v2 = st.checkbox("Avaliação feita", value=bool(r['av2_feito']), key=f"v2{r['id']}")
                     with c2:
                         dt2 = st.date_input("Data da realização", value=r['av2_data'] if r['av2_data'] else d90, key=f"dt2{r['id']}")
                     
-                    # --- LINHA 2: AVALIADOR ---
                     r2 = st.text_input("Avaliador responsável", value=r['av2_responsavel'] or "", key=f"r2{r['id']}", placeholder="Nome do gestor...")
                     
                     st.markdown("---")
                     
-                    # --- LINHA 3: BOTÕES LADO A LADO ---
                     col_btn_salvar, col_btn_excluir, col_filler = st.columns([1, 1, 1.5])
                     
                     with col_btn_salvar:
@@ -918,7 +884,6 @@ elif menu == "👥 COLABORADORES":
             with st.expander(f"👤 {r['nome']} [{r['tipo']}]"):
                 c_tipo, c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1, 1])
                 
-                # Permite alterar o tipo de contratação de quem já está na lista
                 novo_tipo = c_tipo.selectbox("Alterar Tipo", lista_modalidades, 
                                             index=lista_modalidades.index(r['tipo']) if r['tipo'] in lista_modalidades else 0,
                                             key=f"tipo{r['id']}")
