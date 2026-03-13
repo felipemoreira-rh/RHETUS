@@ -131,8 +131,8 @@ with engine.begin() as conn:
         );
     """))
 
-    # 2. MIGRATIONS (Adicionando colunas novas em tabelas que já podem existir)
-    # Usamos blocos Try/Except individuais para que, se a coluna já existir, o código não pare.
+  # 2. MIGRATIONS (Atualização de tabelas existentes)
+    # Criamos a lista de comandos necessários
     migrations = [
         "ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;",
@@ -142,16 +142,17 @@ with engine.begin() as conn:
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_documentos DATE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_foto_curiosidades DATE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_contrato DATE;",
-        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_equipamentos DATE;"
-        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS boas_vindas BOOLEAN DEFAULT FALSE;"
-        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_boas_vindas DATE;"))
-    ]
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_equipamentos DATE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS boas_vindas BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_boas_vindas DATE;"
+    ] # <--- O erro estava aqui: faltava este colchete antes do loop
 
+    # Executamos cada migração individualmente
     for sql in migrations:
         try:
             conn.execute(text(sql))
         except Exception:
-            pass # Coluna já existe ou erro ignorável
+            pass
 # --- 5. SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
@@ -676,6 +677,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
