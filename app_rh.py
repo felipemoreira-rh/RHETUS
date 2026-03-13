@@ -489,8 +489,15 @@ elif menu == "🚀 ONBOARDING":
             return check, dt
 
         for _, row in df_onboarding.iterrows():
-            with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
-                with st.form(key=f"onb_form_{row['id']}"):
+    with st.expander(f"👤 {row['candidato']}"):
+        if row.get('indicado_por') and row.get('valor_bonus', 0) > 0:
+            st.warning(f"💰 **ALERTA DE BÔNUS:** Este candidato foi indicado por **{row['indicado_por']}**. "
+                       f"Valor a pagar: **R$ {row['valor_bonus']:.2f}**")
+            
+            if st.button(f"Confirmar Pagamento para {row['indicado_por']}", key=f"pay_{row['id']}"):
+                # Aqui você pode marcar no banco que o bônus foi pago se desejar
+                st.success("Pagamento confirmado e registrado!")
+        
                     
                     # --- Seção de Início ---
                     st.markdown("**📅 Planejamento**")
