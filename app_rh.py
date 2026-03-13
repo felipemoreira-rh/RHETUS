@@ -57,7 +57,8 @@ def enviar_email_foto(email_candidato, nome_candidato):
         return True
     except Exception as e:
         print(f"Erro ao enviar: {e}")
-        return Falseimport streamlit as st
+        return False
+        import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
