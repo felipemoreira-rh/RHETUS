@@ -49,36 +49,31 @@ def carregar_dados(tabela):
     except:
         return pd.DataFrame()
 
-# --- 4. BANCO DE DADOS (INIT INDIVIDUAL - PREVINE OPERATIONALERROR) ---
+# --- 4. BANCO DE DADOS (INICIALIZAÇÃO ROBUSTA) ---
 with engine.begin() as conn:
-    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);"))
-    conn.execute(text("CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, cad_starbem BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, ifood_ativo BOOLEAN DEFAULT FALSE, equipamento_entregue BOOLEAN DEFAULT FALSE);"))
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS controle_experiencia (
-            id SERIAL PRIMARY KEY, 
-            nome TEXT, 
-            cargo TEXT, 
-            time_equipe TEXT, 
-            data_inicio DATE, 
-            av1_feito BOOLEAN DEFAULT FALSE, 
-            av1_data DATE, 
-            av1_responsavel TEXT, 
-            av2_feito BOOLEAN DEFAULT FALSE, 
-            av2_data DATE, 
-            av2_responsavel TEXT
-            with engine.begin() as conn:
-    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);"))
-    # Comando de segurança para adicionar a coluna empresa em tabelas já criadas
+    # Lista de comandos para garantir que todas as tabelas existam
+    comandos = [
+        "CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);",
+        "CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);",
+        "CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);",
+        "CREATE TABLE IF NOT EXISTS notas_fiscais_ifood (id SERIAL PRIMARY KEY, empresa TEXT, mes_referencia TEXT, arquivo_nf BYTEA, nome_arquivo TEXT, data_upload DATE);",
+        "CREATE TABLE IF NOT EXISTS pagamentos_gerais (id SERIAL PRIMARY KEY, empresa TEXT, categoria TEXT, mes_referencia TEXT, arquivo_pg BYTEA, nome_arquivo TEXT, data_upload DATE);",
+        "CREATE TABLE IF NOT EXISTS colaboradores_ativos (id SERIAL PRIMARY KEY, nome TEXT, tipo TEXT, data_admissao DATE, cad_starbem BOOLEAN DEFAULT FALSE, incl_amil BOOLEAN DEFAULT FALSE, ifood_ativo BOOLEAN DEFAULT FALSE, equipamento_entregue BOOLEAN DEFAULT FALSE);",
+        """CREATE TABLE IF NOT EXISTS controle_experiencia (
+            id SERIAL PRIMARY KEY, nome TEXT, cargo TEXT, time_equipe TEXT, data_inicio DATE, 
+            av1_feito BOOLEAN DEFAULT FALSE, av1_data DATE, av1_responsavel TEXT, 
+            av2_feito BOOLEAN DEFAULT FALSE, av2_data DATE, av2_responsavel TEXT
+        );"""
+    ]
+    
+    for cmd in comandos:
+        conn.execute(text(cmd))
+    
+    # Garantir que a coluna 'empresa' exista na tabela vagas (Migration manual)
     try:
         conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;"))
     except:
         pass
-        );
-    """))
 
 # --- 5. SIDEBAR ---
 with st.sidebar:
@@ -95,29 +90,24 @@ with st.sidebar:
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
-# --- 6. MÓDULO INDICADORES ---
+# --- 6. MÓDULO INDICADORES (COM CONTADOR DE DIAS) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
     
     if not df_v.empty:
-        # Filtro de vagas abertas para o cálculo de tempo
         vagas_abertas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
         
-        # Cálculo da Média de Dias (Tempo de Abertura)
         if not vagas_abertas.empty:
             vagas_abertas['data_abertura'] = pd.to_datetime(vagas_abertas['data_abertura']).dt.date
-            hoje = date.today()
-            vagas_abertas['dias_aberta'] = vagas_abertas['data_abertura'].apply(lambda x: (hoje - x).days if x else 0)
+            vagas_abertas['dias_aberta'] = vagas_abertas['data_abertura'].apply(lambda x: (date.today() - x).days if x else 0)
             media_dias = vagas_abertas['dias_aberta'].mean()
         else:
             media_dias = 0
 
-        # Exibição dos KPIs
         c1, c2, c3 = st.columns(3)
         c1.metric("📌 VAGAS ATIVAS", len(vagas_abertas))
-        c2.metric("⏳ MÉDIA TEMPO ABERTA", f"{int(media_dias)} dias") # Novo Indicador
-        # O c3 fica livre para futuras métricas ou alinhamento visual
+        c2.metric("⏳ MÉDIA TEMPO ABERTA", f"{int(media_dias)} dias")
         
         if not df_c.empty:
             st.divider()
@@ -130,10 +120,8 @@ if menu == "📊 INDICADORES":
             with col_r:
                 st.subheader("👥 Candidatos por Vaga")
                 st.plotly_chart(px.pie(df_c, names='vaga_vinculada', hole=0.4), use_container_width=True)
-
-# --- 7. MÓDULO VAGAS ---
+# --- 7. MÓDULO VAGAS (COM EDIÇÃO COMPLETA) ---
 elif menu == "🏢 VAGAS":
-    # Listas de Opções conforme solicitado
     lista_empresas = ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"]
     lista_times = ["RH", "Jurídico", "Financeiro", "Dados", "CRO", "Desenvolvimento", "Jornalismo", "Marketing", "SRE", "Retenção", "Monetização", "Comunidade", "Conteúdo", "Produto"]
 
@@ -141,63 +129,46 @@ elif menu == "🏢 VAGAS":
         with st.form("nv"):
             col1, col2 = st.columns(2)
             nv = col1.text_input("Nome da Vaga")
-            gv = col2.text_input("Gestor Responsável")
+            gv = col2.text_input("Gestor")
             
             col3, col4 = st.columns(2)
             ev = col3.selectbox("Empresa", lista_empresas)
-            av = col4.selectbox("Time (Área)", lista_times)
+            av = col4.selectbox("Time", lista_times)
             
-            dv = st.date_input("Data de Abertura", value=date.today())
-            
-            if st.form_submit_button("CRIAR VAGA"):
-                executar_sql("""
-                    INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura, empresa) 
-                    VALUES (:n, :a, 'Aberta', :g, :d, :e)
-                """, {"n":nv, "a":av, "g":gv, "d":dv, "e":ev})
-                st.success("Vaga criada com sucesso!")
+            if st.form_submit_button("CRIAR"):
+                executar_sql("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura, empresa) VALUES (:n, :a, 'Aberta', :g, :d, :e)", 
+                            {"n":nv,"a":av,"g":gv,"d":date.today(), "e":ev})
                 st.rerun()
 
     df_v = carregar_dados("vagas")
     for _, row in df_v.iterrows():
-        with st.expander(f"🏢 {row['nome_vaga']} - {row.get('empresa', 'N/A')} ({row['status_vaga']})"):
+        with st.expander(f"🏢 {row['nome_vaga']} | {row.get('empresa', '---')} ({row['status_vaga']})"):
             with st.form(f"edv{row['id']}"):
-                st.markdown("**Editar Informações da Vaga**")
-                
                 c1, c2 = st.columns(2)
-                novo_nome = c1.text_input("Nome da Vaga", value=row['nome_vaga'])
-                novo_gestor = c2.text_input("Gestor", value=row['gestor'] if row['gestor'] else "")
+                v_nome = c1.text_input("Vaga", value=row['nome_vaga'])
+                v_gestor = c2.text_input("Gestor", value=row['gestor'] if row['gestor'] else "")
                 
                 c3, c4 = st.columns(2)
-                # Seleção de Empresa com tratamento de erro caso o valor atual não esteja na lista
-                emp_idx = lista_empresas.index(row['empresa']) if row['empresa'] in lista_empresas else 0
-                nova_empresa = c3.selectbox("Empresa", lista_empresas, index=emp_idx)
+                e_idx = lista_empresas.index(row['empresa']) if row['empresa'] in lista_empresas else 0
+                v_empresa = c3.selectbox("Empresa", lista_empresas, index=e_idx)
                 
-                # Seleção de Time (Área)
-                time_idx = lista_times.index(row['area']) if row['area'] in lista_times else 0
-                nova_area = c4.selectbox("Time", lista_times, index=time_idx)
+                t_idx = lista_times.index(row['area']) if row['area'] in lista_times else 0
+                v_area = c4.selectbox("Time", lista_times, index=t_idx)
                 
                 c5, c6 = st.columns(2)
-                nova_data_ab = c5.date_input("Data de Abertura", value=row['data_abertura'] if row['data_abertura'] else date.today())
-                
-                status_opcoes = ["Aberta", "Pausada", "Finalizada"]
-                status_idx = status_opcoes.index(row['status_vaga']) if row['status_vaga'] in status_opcoes else 0
-                ns = c6.selectbox("Status", status_opcoes, index=status_idx)
+                v_data = c5.date_input("Data Abertura", value=row['data_abertura'] if row['data_abertura'] else date.today())
+                ns = c6.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], 
+                                 index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
                 
                 if st.form_submit_button("SALVAR ALTERAÇÕES"):
-                    df_fechamento = date.today() if ns == "Finalizada" else None
-                    executar_sql("""
-                        UPDATE vagas 
-                        SET nome_vaga=:nv, gestor=:g, empresa=:e, area=:a, data_abertura=:da, status_vaga=:s, data_fechamento=:df 
-                        WHERE id=:id
-                    """, {
-                        "nv": novo_nome, "g": novo_gestor, "e": nova_empresa, 
-                        "a": nova_area, "da": nova_data_ab, "s": ns, "df": df_fechamento, "id": row['id']
-                    })
-                    st.success("Vaga atualizada!")
+                    df_f = date.today() if ns == "Finalizada" else None
+                    executar_sql("""UPDATE vagas SET nome_vaga=:nv, area=:a, status_vaga=:s, gestor=:g, 
+                                 data_abertura=:da, data_fechamento=:df, empresa=:e WHERE id=:id""", 
+                                 {"nv":v_nome, "a":v_area, "s":ns, "g":v_gestor, "da":v_data, "df":df_f, "e":v_empresa, "id":row['id']})
                     st.rerun()
             
             if st.button(f"🗑️ Excluir Vaga", key=f"delv{row['id']}"):
-                executar_sql("DELETE FROM vagas WHERE id=:id", {"id": row['id']})
+                executar_sql("DELETE FROM vagas WHERE id=:id", {"id":row['id']})
                 st.rerun()
 
 # --- 8. MÓDULO CANDIDATOS (COM CONTRATAÇÃO E AUTOMAÇÃO PARA EXPERIÊNCIA) ---
@@ -597,6 +568,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
