@@ -512,46 +512,53 @@ elif menu == "🎓 ESTAGIÁRIOS":
                 if st.button("🗑️ Excluir", key=f"delest{r['id']}"):
                     executar_sql("DELETE FROM contratos_estagio WHERE id=:id", {"id":r['id']}); st.rerun()
 
-# --- 12. MÓDULO FINANCEIRO (AJUSTADO PARA SUBMENU) ---
-elif menu == "Financeiro & Notas": # Nome que aparece no seu selectbox principal (print)
+# --- 12. MÓDULO FINANCEIRO (BASEADO NO SEU PRINT) ---
+elif menu == "Financeiro & Notas":
     
-    # Aqui verificamos o que está marcado no rádio de "NAVEGAÇÃO"
-    # Certifique-se de que a variável do st.sidebar.radio se chame 'sub_menu' ou ajuste abaixo
-    if sub_menu == "🍔 IFOOD":
-        st.header("🍔 Notas Fiscais iFood")
+    # O Streamlit precisa que este texto seja IDENTICO ao que está no st.sidebar.radio
+    # Se no seu radio estiver apenas "IFOOD", remova o emoji abaixo.
+    if navegacao == "🍔 IFOOD":
+        st.markdown("### 🍔 Gestão de Notas iFood")
         
-        with st.expander("➕ CADASTRAR NOVA NOTA IFOOD"):
-            with st.form("form_ifood_ajustado"):
+        # Bloco de Upload
+        with st.expander("➕ CADASTRAR NOVA NOTA IFOOD", expanded=False):
+            with st.form("form_ifood_final"):
                 c1, c2 = st.columns(2)
-                eni = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="if_e")
-                mni = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="if_m")
-                uni = st.file_uploader("Upload da NF (PDF)", type=["pdf"], key="if_u")
+                eni = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="if_emp_box")
+                mni = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="if_mes_box")
+                uni = st.file_uploader("Upload da NF (PDF)", type=["pdf"], key="if_file_up")
                 
                 if st.form_submit_button("SALVAR NOTA IFOOD"):
                     if uni:
+                        dados_pdf = uni.read()
                         executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e, :m, :a, :n, :d)",
-                                    {"e":eni, "m":mni, "a":uni.read(), "n":uni.name, "d":date.today()})
-                        st.success("Nota iFood salva!")
+                                    {"e": eni, "m": mni, "a": dados_pdf, "n": uni.name, "d": date.today()})
+                        st.success("Nota iFood salva com sucesso!")
                         st.rerun()
+                    else:
+                        st.error("Selecione um arquivo PDF.")
 
-        # Listagem iFood
+        # Bloco de Listagem
+        st.write("---")
         df_if = carregar_dados("notas_fiscais_ifood")
         if not df_if.empty:
             for _, r in df_if.iterrows():
-                with st.expander(f"🍴 NF: {r['mes_referencia']} - {r['empresa']}"):
+                with st.expander(f"📄 {r['mes_referencia']} - {r['empresa']}"):
                     st.download_button("📥 Baixar NF", r['arquivo_nf'], r['nome_arquivo'], key=f"dl_if_{r['id']}")
-                    if st.button(f"🗑️ Excluir Nota", key=f"del_if_{r['id']}"):
-                        executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id":r['id']})
+                    if st.button(f"🗑️ Excluir", key=f"del_if_{r['id']}"):
+                        executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id": r['id']})
                         st.rerun()
+        else:
+            st.info("Nenhuma nota iFood cadastrada no banco de dados.")
 
-    elif sub_menu == "💸 OUTROS PAGAMENTOS":
-        st.header("💸 Outros Pagamentos")
+    elif navegacao == "💸 OUTROS PAGAMENTOS":
+        st.markdown("### 💸 Gestão de Outros Pagamentos")
         
         with st.expander("➕ LANÇAR NOVO PAGAMENTO"):
-            with st.form("form_pag_novo"):
+            with st.form("form_pg_final"):
                 c1, c2 = st.columns(2)
-                epg = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="pg_e")
-                mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_m")
+                epg = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="pg_emp_box")
+                mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_mes_box")
                 
                 c3, c4 = st.columns([1, 2])
                 val_pg = c3.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
@@ -561,7 +568,7 @@ elif menu == "Financeiro & Notas": # Nome que aparece no seu selectbox principal
                 d_envio = c5.date_input("Data de Envio", value=date.today())
                 d_pago = c6.date_input("Data de Pagamento", value=date.today())
 
-                upg = st.file_uploader("Anexar Comprovante (PDF)", type=["pdf"], key="pg_u")
+                upg = st.file_uploader("Anexar Comprovante (PDF)", type=["pdf"], key="pg_file_up")
                 
                 if st.form_submit_button("REGISTRAR PAGAMENTO"):
                     if upg:
@@ -573,17 +580,18 @@ elif menu == "Financeiro & Notas": # Nome que aparece no seu selectbox principal
                         st.success("Pagamento registrado!")
                         st.rerun()
 
-        # Listagem Outros Pagamentos
+        # Listagem Geral
         df_pg = carregar_dados("pagamentos_gerais")
         if not df_pg.empty:
-            total_pg = df_pg['valor_pg'].sum() if 'valor_pg' in df_pg.columns else 0
-            st.metric("Total Acumulado", f"R$ {total_pg:,.2f}")
+            total = df_pg['valor_pg'].sum() if 'valor_pg' in df_pg.columns else 0
+            st.metric("Total Acumulado", f"R$ {total:,.2f}")
             for _, row in df_pg.iterrows():
                 with st.expander(f"💰 R$ {row.get('valor_pg', 0):,.2f} | {row['empresa']} - {row.get('motivo', '')}"):
-                    st.download_button("📥 Baixar Comprovante", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
-                    if st.button(f"🗑️ Excluir", key=f"del_pg_{row['id']}"):
+                    st.download_button("📥 Baixar PDF", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
+                    if st.button(f"🗑️ Excluir Registro", key=f"del_pg_{row['id']}"):
                         executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id":row['id']})
                         st.rerun()
+                        
 # --- 13. MÓDULO OUTROS PAGAMENTOS (FILTRO CORRETO) ---
 elif menu == "💸 OUTROS PAGAMENTOS":
     st.subheader("Pagamentos Plusdin São Bernardo e Projeto Consegui Aprender")
@@ -714,6 +722,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
