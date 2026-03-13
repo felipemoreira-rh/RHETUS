@@ -665,6 +665,55 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
                             st.rerun()
         else:
             st.info("Nenhum registro de experiência encontrado.")
+# --- 14. MÓDULO DASHBOARD FINANCEIRO ---
+elif menu == "📊 DASHBOARD FINANCEIRO":
+    st.title("📊 Inteligência Financeira")
+    
+    # Carregamento de dados
+    df_pg = carregar_dados("pagamentos_gerais")
+    df_if = carregar_dados("notas_fiscais_ifood")
+    
+    if not df_pg.empty:
+        # --- 1. MÉTRICAS RESUMO (TOP CARDS) ---
+        total_geral = df_pg['valor_pg'].sum()
+        media_pg = df_pg['valor_pg'].mean()
+        qtd_notas = len(df_if)
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Gasto Total Acumulado", f"R$ {total_geral:,.2f}")
+        c2.metric("Média por Pagamento", f"R$ {media_pg:,.2f}")
+        c3.metric("Total de Notas iFood", f"{qtd_notas} un")
+
+        st.divider()
+
+        # --- 2. GRÁFICOS DE DISTRIBUIÇÃO ---
+        col_esq, col_dir = st.columns(2)
+        
+        with col_esq:
+            st.subheader("🏢 Gastos por Empresa")
+            # Agrupando por empresa
+            gastos_empresa = df_pg.groupby('empresa')['valor_pg'].sum().reset_index()
+            st.bar_chart(data=gastos_empresa, x='empresa', y='valor_pg', color="#2ecc71")
+
+        with col_dir:
+            st.subheader("📅 Evolução Mensal")
+            # Ordenação manual dos meses para o gráfico fazer sentido
+            ordem_meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                          "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            df_pg['mes_idx'] = df_pg['mes_referencia'].apply(lambda x: ordem_meses.index(x) if x in ordem_meses else 99)
+            gastos_mes = df_pg.groupby(['mes_idx', 'mes_referencia'])['valor_pg'].sum().reset_index().sort_values('mes_idx')
+            st.line_chart(data=gastos_mes, x='mes_referencia', y='valor_pg')
+
+        st.divider()
+
+        # --- 3. ANÁLISE DE MOTIVOS ---
+        st.subheader("🔍 Maiores Gastos por Motivo")
+        # Mostra os 10 maiores pagamentos registrados
+        top_gastos = df_pg.nlargest(10, 'valor_pg')[['empresa', 'motivo', 'valor_pg', 'data_pagamento']]
+        st.table(top_gastos.style.format({"valor_pg": "R$ {:,.2f}"}))
+
+    else:
+        st.warning("Ainda não há dados suficientes para gerar o Dashboard. Registre alguns pagamentos primeiro!")
 
 # --- 15. MÓDULO COLABORADORES ---
 elif menu == "👥 COLABORADORES":
@@ -710,6 +759,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
