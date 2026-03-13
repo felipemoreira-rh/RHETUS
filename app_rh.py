@@ -387,154 +387,112 @@ elif menu == "🏢 VAGAS":
                 st.rerun()
 
 # --- 8. MÓDULO CANDIDATOS (EDIÇÃO CORRIGIDA) ---
+# --- 8. MÓDULO CANDIDATOS (VERSÃO ÚNICA E CORRIGIDA) ---
 elif menu == "⚙️ CANDIDATOS":
     st.markdown("### 👥 Gestão de Candidatos")
+    
+    # Carregamento de dados (Vagas e Candidatos)
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
     
-    # 1. FORMULÁRIO DE NOVO CADASTRO
+    # 1. FORMULÁRIO DE NOVO CADASTRO (Expander Único)
     with st.expander("➕ CADASTRAR NOVO CANDIDATO"):
-        with st.form("form_novo_cand", clear_on_submit=True):
+        with st.form("form_novo_cand_unico", clear_on_submit=True):
             c1, c2 = st.columns(2)
             n_novo = c1.text_input("Nome*")
             e_novo = c2.text_input("E-mail*")
+            
             v_list = df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"]
-            v_sel = c1.selectbox("Vaga", v_list)
-            ind_novo = st.text_input("Indicação por")
-            val_novo = st.number_input("Valor Bônus", value=0.0)
+            v_sel = c1.selectbox("Vaga Vinculada", v_list)
+            
+            st.divider()
+            st.markdown("🎁 **Bônus de Indicação**")
+            col_ind1, col_ind2 = st.columns(2)
+            ind_novo = col_ind1.text_input("Quem indicou?")
+            val_novo = col_ind2.number_input("Valor Bônus (R$)", min_value=0.0, step=50.0, value=0.0)
             
             if st.form_submit_button("💾 SALVAR NOVO CANDIDATO"):
                 if n_novo and e_novo:
-                    executar_sql("INSERT INTO candidatos (candidato, email, vaga_vinculada, status_geral, indicado_por, valor_bonus) VALUES (:n, :e, :v, 'Triagem', :i, :val)",
-                                 {"n": n_novo, "e": e_novo, "v": v_sel, "i": ind_novo, "val": val_novo})
+                    sql_ins = """
+                        INSERT INTO candidatos (candidato, email, vaga_vinculada, status_geral, indicado_por, valor_bonus) 
+                        VALUES (:n, :e, :v, 'Triagem', :i, :val)
+                    """
+                    executar_sql(sql_ins, {"n": n_novo, "e": e_novo, "v": vaga_sel, "i": ind_novo, "val": val_novo})
+                    st.success(f"Candidato {n_novo} cadastrado!")
                     st.rerun()
+                else:
+                    st.error("Preencha os campos obrigatórios (*)")
 
     st.divider()
 
-    # 2. LISTAGEM COM EDIÇÃO
+    # 2. LISTAGEM AGRUPADA POR VAGA (Apenas uma vez)
     if not df_c.empty:
-        busca = st.text_input("🔍 Buscar candidato...")
+        # Filtro Global de Busca
+        busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar...")
         df_base = df_c[df_c['candidato'].str.contains(busca, case=False)] if busca else df_c
         
-        vagas_com_candidatos = sorted(df_base['vaga_vinculada'].unique().tolist())
-        abas = st.tabs(vagas_com_candidatos)
-
-        for i, vaga_nome in enumerate(vagas_com_candidatos):
-            with abas[i]:
-                df_vaga = df_base[df_base['vaga_vinculada'] == vaga_nome]
-                
-                for _, cand in df_vaga.iterrows():
-                    with st.expander(f"👤 {cand['candidato'].upper()}"):
-                        
-                        # Ativa a edição
-                        edit_mode = st.toggle("🔓 Liberar Edição", key=f"tog_{cand['id']}")
-                        
-                        with st.form(key=f"edit_form_{cand['id']}"):
-                            col1, col2 = st.columns(2)
-                            
-                            # Campos
-                            novo_nome = col1.text_input("Nome", value=cand['candidato'], disabled=not edit_mode)
-                            novo_email = col2.text_input("E-mail", value=cand.get('email', ''), disabled=not edit_mode)
-                            
-                            # Tratamento seguro para o index da Vaga
-                            idx_vaga = v_list.index(cand['vaga_vinculada']) if cand['vaga_vinculada'] in v_list else 0
-                            novo_vaga = col1.selectbox("Vaga", v_list, index=idx_vaga, disabled=not edit_mode)
-                            
-                            # Tratamento seguro para o index do Status
-                            status_opcoes = ["Triagem", "Entrevista", "Finalizada", "Reprovado"]
-                            idx_status = status_opcoes.index(cand['status_geral']) if cand['status_geral'] in status_opcoes else 0
-                            novo_status = col2.selectbox("Status", status_opcoes, index=idx_status, disabled=not edit_mode)
-                            
-                            novo_ind = col1.text_input("Indicado por", value=cand.get('indicado_por', ''), disabled=not edit_mode)
-                            novo_val = col2.number_input("Valor Bônus", value=float(cand.get('valor_bonus', 0)), disabled=not edit_mode)
-
-                            # BOTÕES (Sempre fora de IFs para evitar o erro de Submit Button)
-                            btn_save = st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True, disabled=not edit_mode)
-                            btn_del = st.form_submit_button("🗑️ EXCLUIR CANDIDATO", use_container_width=True)
-
-                            if btn_save and edit_mode:
-                                sql_up = """
-                                    UPDATE candidatos SET 
-                                    candidato=:n, email=:e, vaga_vinculada=:v, 
-                                    status_geral=:s, indicado_por=:i, valor_bonus=:val 
-                                    WHERE id=:id
-                                """
-                                executar_sql(sql_up, {"n": novo_nome, "e": novo_email, "v": novo_vaga, "s": novo_status, "i": novo_ind, "val": novo_val, "id": cand['id']})
-                                st.success("Alterado com sucesso!")
-                                st.rerun()
-                                
-                            if btn_del:
-                                executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
-                                st.rerun()
-
-    else:
-        st.info("Nenhum candidato cadastrado.")
-    
-    # --- LISTAGEM AGRUPADA POR VAGA ---
-    if not df_c.empty:
-        # 1. Filtro Global de Busca
-        busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar em todas as vagas...")
-        df_base = df_c[df_c['candidato'].str.contains(busca, case=False)] if busca else df_c
-        
-        # 2. Identificar as vagas que possuem candidatos
+        # Identificar vagas presentes nos dados filtrados
         vagas_com_candidatos = sorted(df_base['vaga_vinculada'].unique().tolist())
         
         if not vagas_com_candidatos:
-            st.warning("Nenhum candidato encontrado para essa busca.")
+            st.warning("Nenhum candidato encontrado.")
         else:
-            # Criamos abas para cada vaga encontrada
+            # Criar Abas
             abas = st.tabs(vagas_com_candidatos)
             
             for i, vaga_nome in enumerate(vagas_com_candidatos):
                 with abas[i]:
-                    # Filtra candidatos apenas desta vaga específica
                     df_vaga = df_base[df_base['vaga_vinculada'] == vaga_nome]
-                    st.write(f"📌 {len(df_vaga)} candidato(s) para **{vaga_nome}**")
+                    st.caption(f"📌 {len(df_vaga)} candidato(s) nesta vaga")
                     
                     for _, cand in df_vaga.iterrows():
-                        # Lógica de ícones por status
-                        status = cand['status_geral']
-                        icone = "🔵" if status == 'Triagem' else "🟢" if status == 'Finalizada' else "🟡"
+                        # Ícone por Status
+                        st_atual = cand['status_geral']
+                        icone = "🔵" if st_atual == 'Triagem' else "🟢" if st_atual == 'Finalizada' else "🟡"
                         
-                        # Card do Candidato (Expander)
                         with st.expander(f"{icone} {cand['candidato'].upper()}"):
-                            col_c1, col_c2 = st.columns(2)
+                            # Modo de edição
+                            edit_mode = st.toggle("🔓 Liberar Edição", key=f"tog_ed_{cand['id']}")
                             
-                            with col_c1:
-                                st.markdown(f"**📧 E-mail:** {cand.get('email', 'N/A')}")
-                                st.markdown(f"**📊 Status:** `{status}`")
-                            
-                            with col_c2:
-                                if cand.get('indicado_por'):
-                                    st.markdown(f"**🤝 Indicação:** {cand['indicado_por']}")
-                                    st.markdown(f"**💰 Bônus:** R$ {cand.get('valor_bonus', 0):.2f}")
-                                else:
-                                    st.markdown("**🤝 Origem:** Candidatura Direta")
+                            with st.form(key=f"edit_form_final_{cand['id']}"):
+                                col1, col2 = st.columns(2)
+                                
+                                # Campos Editáveis
+                                edit_nome = col1.text_input("Nome", value=cand['candidato'], disabled=not edit_mode)
+                                edit_email = col2.text_input("E-mail", value=cand.get('email', ''), disabled=not edit_mode)
+                                
+                                # Index da Vaga
+                                idx_v = v_list.index(cand['vaga_vinculada']) if cand['vaga_vinculada'] in v_list else 0
+                                edit_vaga = col1.selectbox("Vaga", v_list, index=idx_v, disabled=not edit_mode)
+                                
+                                # Index do Status
+                                st_opts = ["Triagem", "Entrevista", "Finalizada", "Reprovado"]
+                                idx_s = st_opts.index(st_atual) if st_atual in st_opts else 0
+                                edit_status = col2.selectbox("Status", st_opts, index=idx_s, disabled=not edit_mode)
+                                
+                                edit_ind = col1.text_input("Indicado por", value=cand.get('indicado_por', ''), disabled=not edit_mode)
+                                edit_val = col2.number_input("Valor Bônus", value=float(cand.get('valor_bonus', 0)), disabled=not edit_mode)
 
-                            st.divider()
-                            
-                            # Ações Rápidas
-                            b1, b2, b3 = st.columns([1, 1, 1])
-                            
-                            # Botão Aprovar
-                            if status != 'Finalizada':
-                                if b1.button("✅ Aprovar", key=f"vaga_aprov_{cand['id']}"):
-                                    executar_sql("UPDATE candidatos SET status_geral='Finalizada' WHERE id=:id", {"id": cand['id']})
-                                    st.success(f"Aprovado!")
+                                # Botões
+                                b_salvar = st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True, disabled=not edit_mode)
+                                b_excluir = st.form_submit_button("🗑️ EXCLUIR CANDIDATO", use_container_width=True)
+
+                                if b_salvar and edit_mode:
+                                    sql_up = """
+                                        UPDATE candidatos SET 
+                                        candidato=:n, email=:e, vaga_vinculada=:v, 
+                                        status_geral=:s, indicado_por=:i, valor_bonus=:val 
+                                        WHERE id=:id
+                                    """
+                                    executar_sql(sql_up, {"n": edit_nome, "e": edit_email, "v": edit_vaga, "s": edit_status, "i": edit_ind, "val": edit_val, "id": cand['id']})
+                                    st.success("Atualizado!")
                                     st.rerun()
-                            
-                            # Botão Excluir
-                            if b2.button("🗑️ Remover", key=f"vaga_del_{cand['id']}"):
-                                executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
-                                st.rerun()
-                            
-                            # Botão Reset
-                            if status == 'Finalizada':
-                                if b3.button("⏪ Resetar", key=f"vaga_reset_{cand['id']}"):
-                                    executar_sql("UPDATE candidatos SET status_geral='Triagem' WHERE id=:id", {"id": cand['id']})
+                                    
+                                if b_excluir:
+                                    executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
                                     st.rerun()
     else:
-        st.info("Nenhum candidato cadastrado no banco de dados.")
+        st.info("Nenhum candidato cadastrado.")
 
 # --- 9. MÓDULO ONBOARDING (DESIGN COMPACTO E AUTOMATIZADO) ---
 elif menu == "🚀 ONBOARDING":
