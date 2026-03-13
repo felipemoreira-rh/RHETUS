@@ -1,4 +1,63 @@
-import streamlit as st
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+
+def enviar_email_foto(email_candidato, nome_candidato):
+    # Configurações do Servidor (Exemplo Gmail)
+    meu_email = "seu_email@gmail.com"
+    minha_senha = st.secrets["email"]["password"] # Recomendo guardar nos secrets
+    
+    msg = MIMEMultipart()
+    msg['Subject'] = f"Boas-vindas Etus! 🚀 - Foto e Curiosidades de {nome_candidato}"
+    msg['From'] = meu_email
+    msg['To'] = email_candidato
+
+    corpo = f"""
+    <html>
+    <body>
+        <p>Olá, <strong>{nome_candidato}</strong>!</p>
+        <p>Parabéns pela sua aprovação em nosso processo seletivo! 🎉<br>
+        Agora, gostaríamos de conhecer um pouco mais sobre você.</p>
+        <p>Por isso, pedimos que nos envie através do formulário abaixo:</p>
+        <ul>
+            <li>Uma foto sua, conforme as orientações;</li>
+            <li>Três curiosidades sobre você (hobby, talento, mania, lugar favorito...);</li>
+        </ul>
+        <p>Essas informações serão usadas na sua apresentação à equipe. 😄<br>
+        <strong>Contamos com seu envio até 22/01/2026.</strong></p>
+        <p>🎯 <strong>Orientações para a foto:</strong><br>
+        - Foto do peito para cima;<br>
+        - Fundo neutro (parede branca, cinza ou clara);<br>
+        - Corpo reto e olhando para frente;<br>
+        - De preferência sorrindo;<br>
+        - Evite bonés, óculos escuros ou filtros.</p>
+        <p>👉 <strong>Gentileza preencher:</strong> <a href='https://docs.google.com/forms/d/e/1FAIpQLSd1o4x5jALKryUJraNB7GZB6xyJXJj5nRTs30dw_0ZFoVf9KQ/viewform'>Formulário de Apresentação</a></p>
+        <br>
+    </body>
+    </html>
+    """
+    msg.attach(MIMEText(corpo, 'html'))
+
+    # Anexando a imagem de orientação que você enviou
+    try:
+        with open("orientacao_foto.jpg", 'rb') as f:
+            img = MIMEImage(f.read())
+            img.add_header('Content-Disposition', 'attachment', filename="orientacao_foto.jpg")
+            msg.attach(img)
+    except:
+        pass # Caso o arquivo não exista, envia apenas o texto
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(meu_email, minha_senha)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Erro ao enviar: {e}")
+        return Falseimport streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -148,6 +207,7 @@ with engine.begin() as conn:
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_equipamentos DATE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS boas_vindas BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS data_boas_vindas DATE;"
+        "ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS email TEXT;"
     ]
     for sql in migrations:
         try:
@@ -258,12 +318,20 @@ elif menu == "⚙️ CANDIDATOS":
     df_c = carregar_dados("candidatos")
     
     with st.expander("➕ NOVO CANDIDATO"):
-        with st.form("nc"):
-            nc = st.text_input("Nome")
-            vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
-            if st.form_submit_button("ADICIONAR"):
-                executar_sql("INSERT INTO candidatos (candidato, vaga_vinculada, status_geral) VALUES (:n, :v, 'Triagem')", {"n":nc,"v":vnc})
+    with st.form("nc"):
+        c1, c2 = st.columns(2)
+        nc = c1.text_input("Nome Completo")
+        ec = c2.text_input("E-mail do Candidato") # NOVO CAMPO
+        vnc = st.selectbox("Vaga", df_v['nome_vaga'].tolist() if not df_v.empty else ["Geral"])
+        
+        if st.form_submit_button("ADICIONAR"):
+            if nc and ec:
+                executar_sql("INSERT INTO candidatos (candidato, email, vaga_vinculada, status_geral) VALUES (:n, :e, :v, 'Triagem')", 
+                            {"n":nc, "e":ec, "v":vnc})
+                st.success("Candidato cadastrado!")
                 st.rerun()
+            else:
+                st.error("Por favor, preencha Nome e E-mail.")
 
     if not df_c.empty:
         for v_nome in df_c['vaga_vinculada'].unique():
@@ -329,7 +397,39 @@ elif menu == "🚀 ONBOARDING":
                     v_ini = st.date_input("Data Prevista de Início", 
                                          value=row.get('data_inicio') if row.get('data_inicio') else date.today(),
                                          label_visibility="collapsed")
-                    
+                    # --- Dentro do loop de candidatos no Módulo Onboarding ---
+if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
+    # Verificação do gatilho de e-mail
+    # Se a foto foi marcada agora (c_foto) e antes era False (row['foto_curiosidades'])
+    if c_foto and not bool(row.get('foto_curiosidades')):
+        # Aqui você precisaria do e-mail do candidato no banco. 
+        # Vou assumir que você tem a coluna 'email' ou usaremos um placeholder
+        email_cand = row.get('email', "candidato@email.com") 
+        sucesso_email = enviar_email_foto(email_cand, row['candidato'])
+        if sucesso_email:
+            st.toast(f"📧 E-mail de orientações enviado para {row['candidato']}!", icon="📩")
+        else:
+            st.error("Falha ao enviar e-mail. Verifique as configurações de SMTP.")
+
+    # Executa o SQL normalmente
+    executar_sql("""
+        UPDATE candidatos SET 
+        data_inicio=:di,
+        envio_proposta=:cp, data_proposta=:dp,
+        solic_documentos=:cd, data_documentos=:dd,
+        foto_curiosidades=:cf, data_foto_curiosidades=:dfc, -- Certifique-se que esta coluna existe
+        solic_contrato=:cc, data_contrato=:dc,
+        solic_acessos=:ca, data_equipamentos=:de,
+        boas_vindas=:bv, data_boas_vindas=:dbv
+        WHERE id=:id
+    """, {
+        "di": v_ini, "cp": c_prop, "dp": d_prop, "cd": c_doc, "dd": d_doc,
+        "cf": c_foto, "dfc": d_foto,
+        "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, 
+        "bv": c_bv, "dbv": d_bv, "id": row['id']
+    })
+    st.success(f"Onboarding de {row['candidato']} atualizado!")
+    st.rerun()
                     st.divider()
                     
                     def render_onb_row(label, icon, key_check, key_date):
@@ -734,6 +834,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
