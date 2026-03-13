@@ -237,130 +237,107 @@ elif menu == "🚀 ONBOARDING":
             if st.button("Salvar Checklist", key=f"svon{r['id']}"):
                 executar_sql("UPDATE candidatos SET envio_proposta=:p, solic_documentos=:d, solic_contrato=:c, solic_acessos=:a WHERE id=:id", {"p":p,"d":d,"c":c,"a":a,"id":r['id']}); st.success("Checklist Salvo!"); st.rerun()
 
-# --- 10. MÓDULO DASHBOARD DP (RESTAURADO E CORRIGIDO) ---
+# --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
     
+    # CARREGAMENTO DE DADOS
     df_col = carregar_dados("colaboradores_ativos")
     df_est = carregar_dados("contratos_estagio")
-    df_exp = carregar_dados("controle_experiencia") # Carregado aqui para uso nos KPIs
-    
+    df_exp = carregar_dados("controle_experiencia")
+    df_c = carregar_dados("candidatos") # Necessário para o alerta de indicações
+
     if not df_col.empty:
-        # --- LINHA 1: MÉTRICAS GERAIS ---
+        # MÉTRICAS TOTAIS
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("👥 TOTAL ATIVOS", len(df_col))
-        c2.metric("👔 CLT/PJ", len(df_col[df_col['tipo'].isin(['CLT', 'PJ'])]))
-        c3.metric("🎓 ESTAGIÁRIOS", len(df_col[df_col['tipo'] == 'Estagiário']))
+        total_clt = len(df_col[df_col['tipo'] == 'CLT'])
+        total_pj = len(df_col[df_col['tipo'] == 'PJ'])
+        total_est = len(df_est)
         
-        # Cálculo de Benefícios Concluídos
-        check_cols = ['cad_starbem', 'incl_amil', 'ifood_ativo', 'equipamento_entregue']
-        existentes = [col for col in check_cols if col in df_col.columns]
-        
-        if existentes:
-            total_checks = df_col[existentes].sum().sum()
-            max_possible = len(df_col) * len(existentes)
-            perc_beneficios = (total_checks / max_possible * 100) if max_possible > 0 else 0
-            c4.metric("✅ BENEFÍCIOS OK", f"{round(perc_beneficios, 1)}%")
-        else:
-            c4.metric("✅ BENEFÍCIOS OK", "0%")
+        c1.metric("👥 TOTAL ATIVOS", len(df_col) + total_est)
+        c2.metric("📄 CLT", total_clt)
+        c3.metric("🤝 PJ", total_pj)
+        c4.metric("🎓 ESTAGIÁRIOS", total_est)
 
         st.divider()
 
-        # --- LINHA 2: GRÁFICOS ESTRATÉGICOS ---
-        col_graph1, col_graph2 = st.columns(2)
+        # GRÁFICOS LADO A LADO
+        col_g1, col_g2 = st.columns(2)
         
-        with col_graph1:
-            st.markdown("**Distribuição por Tipo de Contrato**")
-            fig_tipo = px.pie(df_col, names='tipo', hole=0.4, color_discrete_sequence=['#8DF768', '#1E1E1E', '#555555'])
-            st.plotly_chart(fig_tipo, use_container_width=True)
-            
-        with col_graph2:
-            st.markdown("**Acompanhamento de Contratos de Estágio**")
+        with col_g1:
+            st.subheader("Distribuição por Vínculo")
+            fig_vinculo = px.pie(
+                values=[total_clt, total_pj, total_est], 
+                names=['CLT', 'PJ', 'Estágio'],
+                hole=0.4,
+                color_discrete_sequence=['#8DF768', '#00d4ff', '#ffeb3b']
+            )
+            st.plotly_chart(fig_vinculo, use_container_width=True)
+
+        with col_g2:
+            st.subheader("Estagiários por Time")
             if not df_est.empty:
-                df_est['data_fim'] = pd.to_datetime(df_est['data_fim'])
-                df_est['data_inicio'] = pd.to_datetime(df_est['data_inicio'])
-                hoje_ts = pd.Timestamp(date.today())
-                
-                progress_data = []
-                for _, r in df_est.iterrows():
-                    total_dias = (r['data_fim'] - r['data_inicio']).days
-                    passado = (hoje_ts - r['data_inicio']).days
-                    perc = max(0, min(100, (passado / total_dias * 100))) if total_dias > 0 else 0
-                    progress_data.append({"Estagiário": r['estagiario'], "Progresso": perc})
-                
-                df_prog = pd.DataFrame(progress_data)
-                fig_prog = px.bar(df_prog, x='Progresso', y='Estagiário', orientation='h', 
-                                  range_x=[0, 100], color_discrete_sequence=['#8DF768'])
-                st.plotly_chart(fig_prog, use_container_width=True)
+                fig_est = px.bar(df_est, x='time_equipe', color='time_equipe', title="Distribuição de Estagiários")
+                st.plotly_chart(fig_est, use_container_width=True)
             else:
-                st.info("Sem dados de estágio para exibir progresso.")
+                st.info("Sem estagiários cadastrados para exibir no gráfico.")
 
-        # --- NOVO GRÁFICO: INDICADOR DE ADERÊNCIA (SOMENTE 90 DIAS) ---
+        # --- SEÇÃO DE ALERTAS ---
         st.divider()
-        st.markdown("**Qualidade e Aderência ao Prazo (Experiência 90 dias)**")
+        st.markdown('<div class="vaga-header">⚠️ PAINEL DE ALERTAS E PENDÊNCIAS</div>', unsafe_allow_html=True)
         
-        if not df_exp.empty:
-            hoje = date.today()
-            no_prazo, atrasado_pendente = 0, 0
-            
-            for _, r in df_exp.iterrows():
-                dt_limite = r['data_inicio'] + pd.Timedelta(days=90)
-                if r['av2_feito']:
-                    if r['av2_data'] and r['av2_data'] <= dt_limite:
-                        no_prazo += 1
-                    else:
-                        atrasado_pendente += 1
-                elif hoje > dt_limite:
-                    atrasado_pendente += 1
-            
-            c_g1, c_g2 = st.columns([1, 2])
-            with c_g1:
-                total_total = no_prazo + atrasado_pendente
-                perc_ad = (no_prazo / total_total * 100) if total_total > 0 else 100
-                st.metric("🎯 ADERÊNCIA 90 DIAS", f"{round(perc_ad, 1)}%")
-            
-            with c_g2:
-                fig_prazos = px.pie(names=["No Prazo", "Atrasado / Pendente"], 
-                                    values=[no_prazo, atrasado_pendente], 
-                                    hole=0.4, height=300,
-                                    color_discrete_map={"No Prazo": "#8DF768", "Atrasado / Pendente": "#FF4B4B"})
-                st.plotly_chart(fig_prazos, use_container_width=True)
+        col_a1, col_a2 = st.columns(2)
 
-        # --- LINHA 3: ALERTAS DE VENCIMENTO DE EXPERIÊNCIA ---
-        st.divider()
-        st.markdown('<div class="vaga-header">⚠️ ALERTAS DE AVALIAÇÃO (PRÓXIMOS 7 DIAS)</div>', unsafe_allow_html=True)
-        if not df_exp.empty:
+        # ALERTA 1: AVALIAÇÕES DE EXPERIÊNCIA
+        with col_a1:
+            st.markdown("##### ⏳ Avaliações de 90 dias (Próximos 7 dias)")
             hoje = date.today()
-            alertas = []
-            for _, r in df_exp.iterrows():
-                d90 = r['data_inicio'] + pd.Timedelta(days=90)
-                if not r['av2_feito'] and 0 <= (d90 - hoje).days <= 7:
-                    alertas.append(f"🟠 **{r['nome']}**: 90 dias vencem em {d90.strftime('%d/%m/%Y')}")
+            alertas_exp = []
+            if not df_exp.empty:
+                for _, r in df_exp.iterrows():
+                    # Garantir que data_inicio é um objeto de data
+                    data_inicio = pd.to_datetime(r['data_inicio']).date()
+                    d90 = data_inicio + pd.Timedelta(days=90)
+                    # Alerta se não foi feito e se faltam 7 dias ou já venceu
+                    if not r['av2_feito'] and (d90 - hoje).days <= 7:
+                        alertas_exp.append(f"🟠 **{r['nome']}**: Vencimento em {d90.strftime('%d/%m/%Y')}")
             
-            if alertas:
-                for a in alertas: st.warning(a)
+            if alertas_exp:
+                for a in alertas_exp:
+                    st.warning(a)
             else:
-                st.success("Nenhuma avaliação de 90 dias pendente para esta semana.")
-                # --- ALERTA DE PAGAMENTO DE INDICAÇÃO ---
-        st.markdown('<div class="vaga-header">💰 PAGAMENTOS DE INDICAÇÃO (PÓS 90 DIAS)</div>', unsafe_allow_html=True)
-        # Cruzamos candidatos contratados com o controle de experiência
-        if not df_exp.empty and not df_c.empty:
-            contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicacao'] == True)]
-            
+                st.success("Nenhuma avaliação de 90 dias pendente para breve.")
+
+        # ALERTA 2: PAGAMENTO DE INDICAÇÕES
+        with col_a2:
+            st.markdown("##### 💰 Bônus de Indicação (Pós 90 dias)")
             avisos_pagamento = []
-            for _, cand in contratados_ind.iterrows():
-                # Verifica se o candidato já completou 90 dias no controle de experiência
-                exp_vinculo = df_exp[df_exp['nome'] == cand['candidato']]
-                if not exp_vinculo.empty:
-                    data_vencimento = exp_vinculo.iloc[0]['data_inicio'] + pd.Timedelta(days=90)
-                    if date.today() >= data_vencimento:
-                        avisos_pagamento.append(f"✅ **Pagar Indicação**: {cand['nome_indicador']} (pela contratação de {cand['candidato']})")
+            
+            # Filtra candidatos que foram indicados e contratados (Finalizada)
+            if not df_c.empty:
+                contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicacao'] == True)]
+                
+                for _, cand in contratados_ind.iterrows():
+                    # Cruzar com a data de início real no controle de experiência
+                    if not df_exp.empty:
+                        exp_v = df_exp[df_exp['nome'] == cand['candidato']]
+                        if not exp_v.empty:
+                            data_ini = pd.to_datetime(exp_v.iloc[0]['data_inicio']).date()
+                            data_liberacao_pg = data_ini + pd.Timedelta(days=90)
+                            
+                            if hoje >= data_liberacao_pg:
+                                avisos_pagamento.append(
+                                    f"✅ **Liberado**: Pagar bônus para **{cand['nome_indicador']}** "
+                                    f"(Indicação de {cand['candidato']})"
+                                )
             
             if avisos_pagamento:
-                for aviso in avisos_pagamento: st.info(aviso)
+                for aviso in avisos_pagamento:
+                    st.info(aviso)
             else:
-                st.write("Nenhum pagamento de indicação pendente.")
-
+                st.write("Sem pagamentos de indicação pendentes no momento.")
+    else:
+        st.info("Adicione colaboradores ativos para visualizar os indicadores de DP.")
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
     col1, col2 = st.columns([1, 2])
@@ -560,6 +537,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
