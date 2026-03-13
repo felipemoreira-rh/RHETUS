@@ -452,21 +452,62 @@ elif menu == "⚙️ CANDIDATOS":
 # --- 9. MÓDULO ONBOARDING (COM EXPANDERS E DESIGN COMPACTO) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
-    st.caption("Clique no nome do candidato para expandir e gerir as etapas.")
-    
     df_c = carregar_dados("candidatos")
+    
+    # Filtra apenas candidatos com status 'Finalizada'
     df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
 
     if not df_onboarding.empty:
         for _, row in df_onboarding.iterrows():
-            with st.expander(f"👤 {row['candidato']} | Vaga: {row['vaga_vinculada']}"):
-                
-                with st.form(f"form_onb_exp_{row['id']}"):
-                    st.markdown("**📅 Planeamento de Entrada**")
-                    v_ini = st.date_input("Data Prevista de Início", 
-                                         value=row.get('data_inicio') if row.get('data_inicio') else date.today(),
-                                         label_visibility="collapsed")
-                    # --- Dentro do loop de candidatos no Módulo Onboarding ---
+            with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
+                with st.form(key=f"onb_form_{row['id']}"):
+                    col1, col2 = st.columns(2)
+                    
+                    # 1. Campo de Data de Início
+                    v_ini = col1.date_input("Data de Início", 
+                                          value=pd.to_datetime(row['data_inicio']).date() if row['data_inicio'] else date.today())
+                    
+                    st.divider()
+                    st.write("📋 **Checklist de Entrada**")
+                    
+                    # Organização dos Checkboxes
+                    c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')))
+                    c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')))
+                    
+                    # CAMPO FOTO/CURIOSIDADES (O GATILHO)
+                    c_foto = st.checkbox("Foto/Curiosidades", value=bool(row.get('foto_curiosidades')))
+                    d_foto = st.date_input("Previsão/Data Envio Foto", value=date.today())
+                    
+                    c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')))
+                    c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')))
+
+                    if st.form_submit_button("💾 GRAVAR PROGRESSO"):
+                        # Lógica da Automação: 
+                        # Se a caixa foi marcada AGORA e antes estava desmarcada
+                        if c_foto and not bool(row.get('foto_curiosidades')):
+                            if row.get('email'):
+                                enviou = enviar_email_foto(row['email'], row['candidato'])
+                                if enviou:
+                                    st.toast(f"📧 E-mail enviado para {row['candidato']}!", icon="✅")
+                            else:
+                                st.warning("E-mail não enviado: Candidato sem e-mail cadastrado.")
+
+                        # Salva no Banco de Dados
+                        params = {
+                            "di": v_ini, "cp": c_prop, "cd": c_doc,
+                            "cf": c_foto, "dfc": d_foto,
+                            "cc": c_cont, "ca": c_acess, "id": row['id']
+                        }
+                        executar_sql("""
+                            UPDATE candidatos SET 
+                            data_inicio=:di, envio_proposta=:cp, solic_documentos=:cd,
+                            foto_curiosidades=:cf, data_foto_curiosidades=:dfc,
+                            solic_contrato=:cc, solic_acessos=:ca
+                            WHERE id=:id
+                        """, params)
+                        st.rerun()
+    else:
+        st.info("Nenhum candidato em fase de Onboarding.")
 if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
     # Verificação do gatilho de e-mail
     # Se a foto foi marcada agora (c_foto) e antes era False (row['foto_curiosidades'])
