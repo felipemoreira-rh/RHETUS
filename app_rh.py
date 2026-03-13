@@ -308,56 +308,66 @@ elif menu == "⚙️ CANDIDATOS":
                         if st.button(f"🗑️ Excluir", key=f"del_{cr['id']}"):
                             executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
                             st.rerun()
-# --- 9. MÓDULO ONBOARDING (DESIGN ATUALIZADO COM BOAS-VINDAS) ---
+# --- 9. MÓDULO ONBOARDING (DESIGN COMPACTO EM 2 COLUNAS) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
-    st.caption("Acompanhe e registre cada etapa da entrada dos novos talentos.")
+    st.caption("Organização e prazos para a entrada de novos colaboradores.")
     
     df_c = carregar_dados("candidatos")
+    # Filtramos apenas candidatos contratados (status Finalizada)
     df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
 
     if not df_onboarding.empty:
         for _, row in df_onboarding.iterrows():
             with st.container(border=True):
-                col_header1, col_header2 = st.columns([3, 1])
-                col_header1.markdown(f"#### 👤 {row['candidato']}")
-                col_header2.info(f"📍 {row['vaga_vinculada']}")
+                # Cabeçalho do Card
+                col_h1, col_h2 = st.columns([3, 1])
+                col_h1.markdown(f"#### 👤 {row['candidato']}")
+                col_h2.info(f"📍 {row['vaga_vinculada']}")
                 
-                with st.form(f"form_onb_v3_{row['id']}"):
+                with st.form(f"form_onb_cols_{row['id']}"):
+                    # Data de Início Centralizada
                     st.markdown("**📅 Planejamento de Entrada**")
                     v_ini = st.date_input("Data Prevista de Início", 
                                          value=row.get('data_inicio') if row.get('data_inicio') else date.today(),
                                          label_visibility="collapsed")
                     
                     st.divider()
-                    st.markdown("**📝 Checklist de Processos**")
-
+                    
+                    # Função interna para renderizar as linhas de checklist
                     def render_onb_row(label, icon, key_check, key_date):
-                        c1, c2, c3 = st.columns([0.1, 1.5, 2])
-                        with c1:
+                        # Layout interno: Checkbox pequeno, Texto e Data
+                        r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
+                        with r_c1:
                             check = st.checkbox("", value=bool(row.get(key_check, False)), key=f"chk_{key_check}_{row['id']}")
-                        with c2:
+                        with r_c2:
                             st.markdown(f"{icon} {label}")
-                        with c3:
+                        with r_c3:
                             dt = st.date_input("Data", 
                                               value=row.get(key_date) if row.get(key_date) else date.today(), 
                                               key=f"dt_{key_date}_{row['id']}",
                                               label_visibility="collapsed")
                         return check, dt
 
-                    # Checklist atualizado com Boas-vindas
-                    c_prop, d_prop = render_onb_row("Envio da Proposta", "📨", "envio_proposta", "data_proposta")
-                    c_doc, d_doc = render_onb_row("Solicitação de Documentos", "📂", "solic_documentos", "data_documentos")
-                    c_foto, d_foto = render_onb_row("Foto e Curiosidades", "📸", "foto_curiosidades", "data_foto_curiosidades")
-                    c_cont, d_cont = render_onb_row("Solicitação de Contrato", "✍️", "solic_contrato", "data_contrato")
-                    c_acess, d_acess = render_onb_row("Equipamentos e Acessos", "💻", "solic_acessos", "data_equipamentos")
-                    # Novo campo solicitado:
-                    c_bv, d_bv = render_onb_row("E-mail de Boas-vindas", "🎉", "boas_vindas", "data_boas_vindas")
+                    # DIVISÃO EM DUAS COLUNAS PRINCIPAIS
+                    st.markdown("**📝 Checklist de Processos**")
+                    col_esq, col_dir = st.columns(2)
+
+                    with col_esq:
+                        c_prop, d_prop = render_onb_row("Proposta", "📨", "envio_proposta", "data_proposta")
+                        c_doc, d_doc = render_onb_row("Documentos", "📂", "solic_documentos", "data_documentos")
+                        c_foto, d_foto = render_onb_row("Foto/Curiosidades", "📸", "foto_curiosidades", "data_foto_curiosidades")
+
+                    with col_dir:
+                        c_cont, d_cont = render_onb_row("Contrato", "✍️", "solic_contrato", "data_contrato")
+                        c_acess, d_acess = render_onb_row("Equipamentos", "💻", "solic_acessos", "data_equipamentos")
+                        c_bv, d_bv = render_onb_row("Boas-vindas", "🎉", "boas_vindas", "data_boas_vindas")
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 1, 1])
-                    if col_btn_2.form_submit_button("💾 SALVAR PROGRESSO", use_container_width=True):
+                    # Botão de Salvar
+                    _, col_btn, _ = st.columns([1, 1, 1])
+                    if col_btn.form_submit_button("💾 SALVAR", use_container_width=True):
                         executar_sql("""
                             UPDATE candidatos SET 
                             data_inicio=:di,
@@ -372,11 +382,12 @@ elif menu == "🚀 ONBOARDING":
                             "cc": c_cont, "dc": d_cont, "ca": c_acess, "de": d_acess, 
                             "bv": c_bv, "dbv": d_bv, "id": row['id']
                         })
-                        st.success(f"Onboarding de {row['candidato']} atualizado!")
+                        st.success(f"Progresso de {row['candidato']} salvo!")
                         st.rerun()
             st.markdown("<br>", unsafe_allow_html=True)
     else:
-        st.info("Nenhum candidato aguardando onboarding.")
+        st.info("Nenhum candidato em fase de Onboarding (Status 'Finalizada').")
+        
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
@@ -677,6 +688,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
