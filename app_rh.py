@@ -133,19 +133,72 @@ if menu == "📊 INDICADORES":
 
 # --- 7. MÓDULO VAGAS ---
 elif menu == "🏢 VAGAS":
+    # Listas de Opções conforme solicitado
+    lista_empresas = ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"]
+    lista_times = ["RH", "Jurídico", "Financeiro", "Dados", "CRO", "Desenvolvimento", "Jornalismo", "Marketing", "SRE", "Retenção", "Monetização", "Comunidade", "Conteúdo", "Produto"]
+
     with st.expander("➕ CADASTRAR NOVA VAGA"):
         with st.form("nv"):
-            nv = st.text_input("Vaga"); gv = st.text_input("Gestor"); av = st.selectbox("Área", ["Tecnologia", "Comercial", "Operações", "RH", "Financeiro"])
-            if st.form_submit_button("CRIAR"):
-                executar_sql("INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura) VALUES (:n, :a, 'Aberta', :g, :d)", {"n":nv,"a":av,"g":gv,"d":date.today()}); st.rerun()
+            col1, col2 = st.columns(2)
+            nv = col1.text_input("Nome da Vaga")
+            gv = col2.text_input("Gestor Responsável")
+            
+            col3, col4 = st.columns(2)
+            ev = col3.selectbox("Empresa", lista_empresas)
+            av = col4.selectbox("Time (Área)", lista_times)
+            
+            dv = st.date_input("Data de Abertura", value=date.today())
+            
+            if st.form_submit_button("CRIAR VAGA"):
+                executar_sql("""
+                    INSERT INTO vagas (nome_vaga, area, status_vaga, gestor, data_abertura, empresa) 
+                    VALUES (:n, :a, 'Aberta', :g, :d, :e)
+                """, {"n":nv, "a":av, "g":gv, "d":dv, "e":ev})
+                st.success("Vaga criada com sucesso!")
+                st.rerun()
+
     df_v = carregar_dados("vagas")
     for _, row in df_v.iterrows():
-        with st.expander(f"🏢 {row['nome_vaga']} ({row['status_vaga']})"):
+        with st.expander(f"🏢 {row['nome_vaga']} - {row.get('empresa', 'N/A')} ({row['status_vaga']})"):
             with st.form(f"edv{row['id']}"):
-                ns = st.selectbox("Status", ["Aberta", "Pausada", "Finalizada"], index=["Aberta", "Pausada", "Finalizada"].index(row['status_vaga']))
-                if st.form_submit_button("ATUALIZAR"):
-                    df = date.today() if ns == "Finalizada" else None
-                    executar_sql("UPDATE vagas SET status_vaga=:s, data_fechamento=:df WHERE id=:id", {"s":ns,"df":df,"id":row['id']}); st.rerun()
+                st.markdown("**Editar Informações da Vaga**")
+                
+                c1, c2 = st.columns(2)
+                novo_nome = c1.text_input("Nome da Vaga", value=row['nome_vaga'])
+                novo_gestor = c2.text_input("Gestor", value=row['gestor'] if row['gestor'] else "")
+                
+                c3, c4 = st.columns(2)
+                # Seleção de Empresa com tratamento de erro caso o valor atual não esteja na lista
+                emp_idx = lista_empresas.index(row['empresa']) if row['empresa'] in lista_empresas else 0
+                nova_empresa = c3.selectbox("Empresa", lista_empresas, index=emp_idx)
+                
+                # Seleção de Time (Área)
+                time_idx = lista_times.index(row['area']) if row['area'] in lista_times else 0
+                nova_area = c4.selectbox("Time", lista_times, index=time_idx)
+                
+                c5, c6 = st.columns(2)
+                nova_data_ab = c5.date_input("Data de Abertura", value=row['data_abertura'] if row['data_abertura'] else date.today())
+                
+                status_opcoes = ["Aberta", "Pausada", "Finalizada"]
+                status_idx = status_opcoes.index(row['status_vaga']) if row['status_vaga'] in status_opcoes else 0
+                ns = c6.selectbox("Status", status_opcoes, index=status_idx)
+                
+                if st.form_submit_button("SALVAR ALTERAÇÕES"):
+                    df_fechamento = date.today() if ns == "Finalizada" else None
+                    executar_sql("""
+                        UPDATE vagas 
+                        SET nome_vaga=:nv, gestor=:g, empresa=:e, area=:a, data_abertura=:da, status_vaga=:s, data_fechamento=:df 
+                        WHERE id=:id
+                    """, {
+                        "nv": novo_nome, "g": novo_gestor, "e": nova_empresa, 
+                        "a": nova_area, "da": nova_data_ab, "s": ns, "df": df_fechamento, "id": row['id']
+                    })
+                    st.success("Vaga atualizada!")
+                    st.rerun()
+            
+            if st.button(f"🗑️ Excluir Vaga", key=f"delv{row['id']}"):
+                executar_sql("DELETE FROM vagas WHERE id=:id", {"id": row['id']})
+                st.rerun()
 
 # --- 8. MÓDULO CANDIDATOS (COM CONTRATAÇÃO E AUTOMAÇÃO PARA EXPERIÊNCIA) ---
 elif menu == "⚙️ CANDIDATOS":
@@ -544,6 +597,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
