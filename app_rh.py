@@ -542,7 +542,7 @@ if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
     st.rerun()
     st.divider()
                     
-                    def render_onb_row(label, icon, key_check, key_date):
+    def render_onb_row(label, icon, key_check, key_date):
                         r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
                         with r_c1:
                             check = st.checkbox("", value=bool(row.get(key_check, False)), key=f"chk_{key_check}_{row['id']}")
