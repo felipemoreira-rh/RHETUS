@@ -311,23 +311,20 @@ elif menu == "⚙️ CANDIDATOS":
                         if st.button(f"🗑️ Excluir", key=f"del_{cr['id']}"):
                             executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
                             st.rerun()
-# --- 9. MÓDULO ONBOARDING (DESIGN COMPACTO EM 2 COLUNAS) ---
+
 # --- 9. MÓDULO ONBOARDING (COM EXPANDERS E DESIGN COMPACTO) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     st.caption("Clique no nome do candidato para expandir e gerir as etapas.")
     
     df_c = carregar_dados("candidatos")
-    # Filtramos apenas candidatos contratados (status Finalizada)
     df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
 
     if not df_onboarding.empty:
         for _, row in df_onboarding.iterrows():
-            # O st.expander permite minimizar e expandir a visualização
             with st.expander(f"👤 {row['candidato']} | Vaga: {row['vaga_vinculada']}"):
                 
                 with st.form(f"form_onb_exp_{row['id']}"):
-                    # Linha 1: Planeamento de Data
                     st.markdown("**📅 Planeamento de Entrada**")
                     v_ini = st.date_input("Data Prevista de Início", 
                                          value=row.get('data_inicio') if row.get('data_inicio') else date.today(),
@@ -335,7 +332,6 @@ elif menu == "🚀 ONBOARDING":
                     
                     st.divider()
                     
-                    # Função interna para renderizar as linhas de checklist
                     def render_onb_row(label, icon, key_check, key_date):
                         r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
                         with r_c1:
@@ -349,7 +345,7 @@ elif menu == "🚀 ONBOARDING":
                                               label_visibility="collapsed")
                         return check, dt
 
-                    # Organização em duas colunas dentro do expander
+                    
                     st.markdown("**📝 Checklist de Processos**")
                     col_esq, col_dir = st.columns(2)
 
@@ -543,21 +539,21 @@ elif menu == "🍔 IFOOD":
 elif menu == "💸 OUTROS PAGAMENTOS":
     st.subheader("Gestão de Outros Pagamentos")
     
-    with st.expander("➕ LANÇAR NOVO PAGAMENTO"):
+    with st.expander("➕ LANÇAR NOVO PAGAMENTO", expanded=True):
         with st.form("form_pg_geral"):
             c1, c2 = st.columns(2)
-            epg = c1.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender"], key="pg_e")
-            mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_m")
+            epg = epg = st.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender", "ETUS", "BHAZ", "Evolution", "E3J"], key="pg_e_new")
+            mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_m_new")
             
             c3, c4 = st.columns([1, 2])
             val_pg = c3.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
-            motivo_pg = c4.text_input("Motivo do Pagamento")
+            motivo_pg = c4.text_input("Motivo do Pagamento (Ex: Internet, Aluguel)")
 
             c5, c6 = st.columns(2)
             d_envio = c5.date_input("Data de Envio", value=date.today())
             d_pago = c6.date_input("Data de Pagamento", value=date.today())
 
-            upg = st.file_uploader("Comprovante (PDF)", type=["pdf"], key="pg_u")
+            upg = st.file_uploader("Comprovante (PDF)", type=["pdf"], key="pg_u_new")
             
             if st.form_submit_button("REGISTRAR PAGAMENTO"):
                 if upg:
@@ -569,41 +565,68 @@ elif menu == "💸 OUTROS PAGAMENTOS":
                     st.success("Pagamento registrado!")
                     st.rerun()
 
+    st.markdown("### 🔍 Histórico de Pagamentos")
     df_pg = carregar_dados("pagamentos_gerais")
     if not df_pg.empty:
-        total = df_pg['valor_pg'].sum() if 'valor_pg' in df_pg.columns else 0
-        st.metric("Total em Outros Pagamentos", f"R$ {total:,.2f}")
-        for _, row in df_pg.iterrows():
-            with st.expander(f"💰 R$ {row.get('valor_pg', 0):,.2f} | {row['empresa']} - {row.get('motivo', '')}"):
-                st.download_button("📥 Baixar PDF", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
-                if st.button(f"🗑️ Excluir Registro", key=f"del_pg_{row['id']}"):
+        # Filtro rápido na tela
+        f_emp = st.multiselect("Filtrar Empresa", df_pg['empresa'].unique(), default=df_pg['empresa'].unique())
+        df_filtered = df_pg[df_pg['empresa'].isin(f_emp)]
+        
+        for _, row in df_filtered.iterrows():
+            valor = row.get('valor_pg', 0)
+            with st.expander(f"💰 R$ {valor:,.2f} | {row['empresa']} - {row.get('motivo', 'S/M')}"):
+                col_b1, col_b2 = st.columns(2)
+                col_b1.download_button("📥 Baixar Comprovante", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
+                if col_b2.button(f"🗑️ Excluir Registro", key=f"del_pg_{row['id']}"):
                     executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id":row['id']})
                     st.rerun()
-                        
-# --- 13. MÓDULO OUTROS PAGAMENTOS (FILTRO CORRETO) ---
-elif menu == "💸 OUTROS PAGAMENTOS":
-    st.subheader("Pagamentos Plusdin São Bernardo e Projeto Consegui Aprender")
-    lista_pg = ["Plusdin São Bernardo", "Projeto Consegui Aprender"]
-    col_u, col_l = st.columns([1, 2])
-    with col_u:
-        st.markdown('<div class="vaga-header">📤 NOVO LANÇAMENTO</div>', unsafe_allow_html=True)
-        with st.form("f_pg"):
-            emp = st.selectbox("Empresa", lista_pg)
-            cat = st.radio("Categoria", ["PSB", "MDP"], horizontal=True)
-            mes = st.selectbox("Mês", ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"])
-            arq = st.file_uploader("PDF Comprovante", type="pdf")
-            if st.form_submit_button("SALVAR PAGAMENTO"):
-                if arq: executar_sql("INSERT INTO pagamentos_gerais (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload) VALUES (:e,:c,:m,:a,:n,:d)", {"e":emp,"c":cat,"m":mes,"a":arq.getvalue(),"n":arq.name,"d":date.today()}); st.rerun()
-    with col_l:
-        st.markdown('<div class="vaga-header">🔍 CONSULTA PAGAMENTOS</div>', unsafe_allow_html=True)
-        f_pg = st.multiselect("Filtrar por Empresa Geral", lista_pg, default=lista_pg)
-        df_pg = carregar_dados("pagamentos_gerais")
-        if not df_pg.empty:
-            for _, r in df_pg[df_pg['empresa'].isin(f_pg)].iterrows():
-                with st.expander(f"💰 {r['empresa']} | {r['categoria']} - {r['mes_referencia']}"):
-                    st.download_button("📥 Baixar", r['arquivo_pg'], r['nome_arquivo'], key=f"dlpg{r['id']}")
-                    if st.button("🗑️ Excluir", key=f"delpg{r['id']}"): executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id":r['id']}); st.rerun()
 
+# --- 14. MÓDULO DASHBOARD FINANCEIRO ---
+elif menu == "📊 DASHBOARD FINANCEIRO":
+    st.subheader("Análise de Custos e Notas")
+    
+    df_pg = carregar_dados("pagamentos_gerais")
+    df_if = carregar_dados("notas_fiscais_ifood")
+    
+    if not df_pg.empty:
+        # Métricas em Cards
+        total_acumulado = df_pg['valor_pg'].sum()
+        qtd_pagamentos = len(df_pg)
+        qtd_ifood = len(df_if)
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Gasto Total", f"R$ {total_acumulado:,.2f}")
+        m2.metric("Qtd. Pagamentos", f"{qtd_pagamentos} registros")
+        m3.metric("Notas iFood", f"{qtd_ifood} docs")
+
+        st.divider()
+        
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("**💰 Gastos por Empresa**")
+            gastos_emp = df_pg.groupby('empresa')['valor_pg'].sum().reset_index()
+            fig_emp = px.pie(gastos_emp, values='valor_pg', names='empresa', hole=0.4, 
+                             color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_emp, use_container_width=True)
+            
+        with col_g2:
+            st.markdown("**📅 Gastos por Mês de Referência**")
+            gastos_mes = df_pg.groupby('mes_referencia')['valor_pg'].sum().reset_index()
+            # Ordenação lógica dos meses
+            meses_ordem = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            gastos_mes['mes_referencia'] = pd.Categorical(gastos_mes['mes_referencia'], categories=meses_ordem, ordered=True)
+            gastos_mes = gastos_mes.sort_values('mes_referencia')
+            
+            fig_mes = px.line(gastos_mes, x='mes_referencia', y='valor_pg', markers=True, line_shape="spline")
+            fig_mes.update_traces(line_color='#8DF768')
+            st.plotly_chart(fig_mes, use_container_width=True)
+
+        st.markdown("**📑 Ranking de Maiores Despesas**")
+        ranking = df_pg.nlargest(5, 'valor_pg')[['empresa', 'motivo', 'valor_pg', 'mes_referencia']]
+        st.table(ranking.style.format({"valor_pg": "R$ {:,.2f}"}))
+    else:
+        st.info("Aguardando dados para gerar indicadores financeiros.")
 # --- 14. MÓDULO PERÍODO DE EXPERIÊNCIA (REFORMULADO E COMPLETO) ---
 elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
     st.subheader("Controle de Avaliação de Experiência (90 dias)")
@@ -665,55 +688,7 @@ elif menu == "⏳ PERÍODO DE EXPERIÊNCIA":
                             st.rerun()
         else:
             st.info("Nenhum registro de experiência encontrado.")
-# --- 14. MÓDULO DASHBOARD FINANCEIRO ---
-elif menu == "📊 DASHBOARD FINANCEIRO":
-    st.title("📊 Inteligência Financeira")
-    
-    # Carregamento de dados
-    df_pg = carregar_dados("pagamentos_gerais")
-    df_if = carregar_dados("notas_fiscais_ifood")
-    
-    if not df_pg.empty:
-        # --- 1. MÉTRICAS RESUMO (TOP CARDS) ---
-        total_geral = df_pg['valor_pg'].sum()
-        media_pg = df_pg['valor_pg'].mean()
-        qtd_notas = len(df_if)
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Gasto Total Acumulado", f"R$ {total_geral:,.2f}")
-        c2.metric("Média por Pagamento", f"R$ {media_pg:,.2f}")
-        c3.metric("Total de Notas iFood", f"{qtd_notas} un")
 
-        st.divider()
-
-        # --- 2. GRÁFICOS DE DISTRIBUIÇÃO ---
-        col_esq, col_dir = st.columns(2)
-        
-        with col_esq:
-            st.subheader("🏢 Gastos por Empresa")
-            # Agrupando por empresa
-            gastos_empresa = df_pg.groupby('empresa')['valor_pg'].sum().reset_index()
-            st.bar_chart(data=gastos_empresa, x='empresa', y='valor_pg', color="#2ecc71")
-
-        with col_dir:
-            st.subheader("📅 Evolução Mensal")
-            # Ordenação manual dos meses para o gráfico fazer sentido
-            ordem_meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
-                          "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-            df_pg['mes_idx'] = df_pg['mes_referencia'].apply(lambda x: ordem_meses.index(x) if x in ordem_meses else 99)
-            gastos_mes = df_pg.groupby(['mes_idx', 'mes_referencia'])['valor_pg'].sum().reset_index().sort_values('mes_idx')
-            st.line_chart(data=gastos_mes, x='mes_referencia', y='valor_pg')
-
-        st.divider()
-
-        # --- 3. ANÁLISE DE MOTIVOS ---
-        st.subheader("🔍 Maiores Gastos por Motivo")
-        # Mostra os 10 maiores pagamentos registrados
-        top_gastos = df_pg.nlargest(10, 'valor_pg')[['empresa', 'motivo', 'valor_pg', 'data_pagamento']]
-        st.table(top_gastos.style.format({"valor_pg": "R$ {:,.2f}"}))
-
-    else:
-        st.warning("Ainda não há dados suficientes para gerar o Dashboard. Registre alguns pagamentos primeiro!")
 
 # --- 15. MÓDULO COLABORADORES ---
 elif menu == "👥 COLABORADORES":
@@ -759,6 +734,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
