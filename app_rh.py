@@ -386,7 +386,7 @@ elif menu == "🏢 VAGAS":
                 executar_sql("DELETE FROM vagas WHERE id=:id", {"id":row['id']})
                 st.rerun()
 
-# --- 8. MÓDULO CANDIDATOS (VISUAL DE CARDS E GESTÃO) ---
+# --- 8. MÓDULO CANDIDATOS (AGRUPADO POR VAGA COM CARDS) ---
 elif menu == "⚙️ CANDIDATOS":
     st.markdown("### 👥 Gestão de Candidatos")
     
@@ -424,58 +424,71 @@ elif menu == "⚙️ CANDIDATOS":
                 else:
                     st.error("Preencha Nome e E-mail.")
 
-    st.markdown("---")
+    st.divider()
     
-    # --- LISTAGEM EM FORMATO DE CARDS ---
+    # --- LISTAGEM AGRUPADA POR VAGA ---
     if not df_c.empty:
-        # Barra de busca para filtrar os cards
-        busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar...")
-        df_exibir = df_c[df_c['candidato'].str.contains(busca, case=False)] if busca else df_c
-
-        for _, cand in df_exibir.iterrows():
-            # Define ícone por status
-            status = cand['status_geral']
-            icone = "🔵" if status == 'Triagem' else "🟢" if status == 'Finalizada' else "🟡"
+        # 1. Filtro Global de Busca
+        busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar em todas as vagas...")
+        df_base = df_c[df_c['candidato'].str.contains(busca, case=False)] if busca else df_c
+        
+        # 2. Identificar as vagas que possuem candidatos
+        vagas_com_candidatos = sorted(df_base['vaga_vinculada'].unique().tolist())
+        
+        if not vagas_com_candidatos:
+            st.warning("Nenhum candidato encontrado para essa busca.")
+        else:
+            # Criamos abas para cada vaga encontrada
+            abas = st.tabs(vagas_com_candidatos)
             
-            # Card do Candidato
-            with st.expander(f"{icone} {cand['candidato'].upper()} | {cand['vaga_vinculada']}"):
-                col_c1, col_c2 = st.columns(2)
-                
-                with col_c1:
-                    st.markdown(f"**📧 E-mail:** {cand.get('email', 'N/A')}")
-                    st.markdown(f"**📊 Status:** `{status}`")
-                
-                with col_c2:
-                    if cand.get('indicado_por'):
-                        st.markdown(f"**🤝 Indicação:** {cand['indicado_por']}")
-                        st.markdown(f"**💰 Bônus:** R$ {cand.get('valor_bonus', 0):.2f}")
-                    else:
-                        st.markdown("**🤝 Origem:** Candidatura Direta")
+            for i, vaga_nome in enumerate(vagas_com_candidatos):
+                with abas[i]:
+                    # Filtra candidatos apenas desta vaga específica
+                    df_vaga = df_base[df_base['vaga_vinculada'] == vaga_nome]
+                    st.write(f"📌 {len(df_vaga)} candidato(s) para **{vaga_nome}**")
+                    
+                    for _, cand in df_vaga.iterrows():
+                        # Lógica de ícones por status
+                        status = cand['status_geral']
+                        icone = "🔵" if status == 'Triagem' else "🟢" if status == 'Finalizada' else "🟡"
+                        
+                        # Card do Candidato (Expander)
+                        with st.expander(f"{icone} {cand['candidato'].upper()}"):
+                            col_c1, col_c2 = st.columns(2)
+                            
+                            with col_c1:
+                                st.markdown(f"**📧 E-mail:** {cand.get('email', 'N/A')}")
+                                st.markdown(f"**📊 Status:** `{status}`")
+                            
+                            with col_c2:
+                                if cand.get('indicado_por'):
+                                    st.markdown(f"**🤝 Indicação:** {cand['indicado_por']}")
+                                    st.markdown(f"**💰 Bônus:** R$ {cand.get('valor_bonus', 0):.2f}")
+                                else:
+                                    st.markdown("**🤝 Origem:** Candidatura Direta")
 
-                st.divider()
-                
-                # Ações Rápidas
-                b1, b2, b3 = st.columns([1, 1, 1])
-                
-                # Botão Aprovar (Só aparece se não estiver finalizado)
-                if status != 'Finalizada':
-                    if b1.button("✅ Aprovar (Onboarding)", key=f"btn_aprov_{cand['id']}"):
-                        executar_sql("UPDATE candidatos SET status_geral='Finalizada' WHERE id=:id", {"id": cand['id']})
-                        st.success(f"{cand['candidato']} movido para Onboarding!")
-                        st.rerun()
-                
-                # Botão Excluir
-                if b2.button("🗑️ Remover", key=f"btn_del_{cand['id']}"):
-                    executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
-                    st.warning(f"Candidato {cand['candidato']} removido.")
-                    st.rerun()
-                
-                # Botão Reset (Voltar para triagem)
-                if status == 'Finalizada':
-                    if b3.button("⏪ Voltar p/ Triagem", key=f"btn_reset_{cand['id']}"):
-                        executar_sql("UPDATE candidatos SET status_geral='Triagem' WHERE id=:id", {"id": cand['id']})
-                        st.rerun()
-
+                            st.divider()
+                            
+                            # Ações Rápidas
+                            b1, b2, b3 = st.columns([1, 1, 1])
+                            
+                            # Botão Aprovar
+                            if status != 'Finalizada':
+                                if b1.button("✅ Aprovar", key=f"vaga_aprov_{cand['id']}"):
+                                    executar_sql("UPDATE candidatos SET status_geral='Finalizada' WHERE id=:id", {"id": cand['id']})
+                                    st.success(f"Aprovado!")
+                                    st.rerun()
+                            
+                            # Botão Excluir
+                            if b2.button("🗑️ Remover", key=f"vaga_del_{cand['id']}"):
+                                executar_sql("DELETE FROM candidatos WHERE id=:id", {"id": cand['id']})
+                                st.rerun()
+                            
+                            # Botão Reset
+                            if status == 'Finalizada':
+                                if b3.button("⏪ Resetar", key=f"vaga_reset_{cand['id']}"):
+                                    executar_sql("UPDATE candidatos SET status_geral='Triagem' WHERE id=:id", {"id": cand['id']})
+                                    st.rerun()
     else:
         st.info("Nenhum candidato cadastrado no banco de dados.")
 
