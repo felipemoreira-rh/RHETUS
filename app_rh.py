@@ -164,7 +164,7 @@ elif menu == "🏢 VAGAS":
                 executar_sql("DELETE FROM vagas WHERE id=:id", {"id":row['id']})
                 st.rerun()
 
-# --- 8. MÓDULO CANDIDATOS (COM CONTRATAÇÃO E AUTOMAÇÃO PARA EXPERIÊNCIA) ---
+# --- 8. MÓDULO CANDIDATOS ---
 elif menu == "⚙️ CANDIDATOS":
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
@@ -182,93 +182,46 @@ elif menu == "⚙️ CANDIDATOS":
             st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
             for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
                 with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
+                    # FORMULÁRIO DE EDIÇÃO DE DADOS
+                    with st.form(f"f_edit_{cr['id']}"):
+                        c_nome = st.text_input("Nome do Candidato", value=cr['candidato'])
+                        
+                        col_ind1, col_ind2 = st.columns(2)
+                        c_ind = col_ind1.checkbox("Possui Indicação?", value=bool(cr.get('indicacao', False)), key=f"check_ind_{cr['id']}")
+                        c_quem = col_ind2.text_input("Nome de quem indicou", value=cr.get('nome_indicador', "") if cr.get('nome_indicador') else "")
+                        
                         etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
                         idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
-                        ns = st.selectbox("Etapa Atual", etapas, index=idx_etapa, key=f"s{cr['id']}")
+                        ns = st.selectbox("Etapa Atual", etapas, index=idx_etapa)
                         
-                        # Se marcar como Finalizada, abre opções de contratação
-                        data_ini_contratado = None
-                        if ns == "Finalizada":
-                            st.info("✨ Candidato em fase de contratação")
-                            foi_contratado = st.checkbox("Confirmar Contratação?", key=f"conf{cr['id']}")
-                            if foi_contratado:
-                                data_ini_contratado = st.date_input("Data de Início (Admissão)", value=date.today(), key=f"dt_ini{cr['id']}")
-                        
-                        if st.button("Salvar Status e Integrar", key=f"b{cr['id']}"):
-                            # 1. Atualiza status do candidato
-                            executar_sql("UPDATE candidatos SET status_geral=:s WHERE id=:id", {"s":ns,"id":cr['id']})
-                            
-                            # 2. Se Finalizada + Confirmar Contratação -> Automação DP
-                            if ns == "Finalizada" and data_ini_contratado:
-                                # A) Envia para Colaboradores Ativos
-                                df_colab = carregar_dados("colaboradores_ativos")
-                                if df_colab.empty or cr['candidato'] not in df_colab['nome'].values:
-                                    executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, 'CLT', :d)", 
-                                                {"n": cr['candidato'], "d": data_ini_contratado})
-                                
-                                # B) Envia para Controle de Experiência (DP)
-                                df_exp = carregar_dados("controle_experiencia")
-                                if df_exp.empty or cr['candidato'] not in df_exp['nome'].values:
-                                    executar_sql("""
-                                        INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) 
-                                        VALUES (:n, :c, :t, :d)
-                                    """, {
-                                        "n": cr['candidato'], 
-                                        "c": cr['vaga_vinculada'], 
-                                        "t": "A definir", # Pode ser ajustado depois no DP
-                                        "d": data_ini_contratado
-                                    })
-                                st.success(f"✅ {cr['candidato']} integrado ao DP (Colaboradores e Experiência)!")
+                        if st.form_submit_button("SALVAR DADOS"):
+                            executar_sql("UPDATE candidatos SET candidato=:n, indicacao=:ind, nome_indicador=:ni, status_geral=:s WHERE id=:id",
+                                        {"n": c_nome, "ind": c_ind, "ni": c_quem, "s": ns, "id": cr['id']})
                             st.rerun()
-                    
-                    with c2:
-                        up_cv = st.file_uploader("Currículo (PDF)", type="pdf", key=f"up{cr['id']}")
-                        if up_cv and st.button("💾 Salvar PDF", key=f"sv{cr['id']}"):
-                            executar_sql("UPDATE candidatos SET arquivo_cv=:d WHERE id=:id", {"d":up_cv.getvalue(), "id":cr['id']})
+
+                    # LÓGICA DE CONTRATAÇÃO (Só aparece se for Finalizada)
+                    if ns == "Finalizada":
+                        st.info("✨ Fase de contratação")
+                        c_data = st.date_input("Data de Admissão", value=date.today(), key=f"dt_adm_{cr['id']}")
+                        if st.button("Confirmar e Enviar ao DP", key=f"btn_dp_{cr['id']}"):
+                            # Envia para Colaboradores e Experiência
+                            executar_sql("INSERT INTO colaboradores_ativos (nome, tipo, data_admissao) VALUES (:n, 'CLT', :d)", {"n": cr['candidato'], "d": c_data})
+                            executar_sql("INSERT INTO controle_experiencia (nome, cargo, time_equipe, data_inicio) VALUES (:n, :c, 'A definir', :d)", 
+                                        {"n": cr['candidato'], "c": cr['vaga_vinculada'], "d": c_data})
+                            st.success("Integrado com sucesso!")
                             st.rerun()
-                            st.divider()
-                    if st.button(f"🗑️ Excluir Candidato: {cr['candidato']}", key=f"delcan{cr['id']}"):
-                        executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
-                        st.warning(f"Candidato {cr['candidato']} removido.")
-                        st.rerun()
-                        
-                        # Verificação segura da coluna de arquivo para evitar KeyError
-                        tem_cv = False
-                        if 'arquivo_cv' in cr:
-                             if cr['arquivo_cv'] is not None: tem_cv = True
-                        
-                        if tem_cv:
-                            st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
+
+                    # DOWNLOAD CV E EXCLUSÃO
+                    st.divider()
+                    col_cv, col_del = st.columns(2)
+                    with col_cv:
+                        if cr.get('arquivo_cv') is not None:
+                            st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl_{cr['id']}")
                         else:
-                            st.caption("Nenhum currículo anexado.")
-                            df_c = carregar_dados("candidatos")
-    if not df_c.empty:
-        for v_nome in df_c['vaga_vinculada'].unique():
-            st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
-            for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
-                with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
-                    with st.form(f"edit_can_{cr['id']}"):
-                        c1, c2 = st.columns(2)
-                        novo_nome_c = c1.text_input("Nome do Candidato", value=cr['candidato'])
-                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
-                        idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
-                        ns = c2.selectbox("Etapa Atual", etapas, index=idx_etapa)
-
-                        # --- LÓGICA DE INDICAÇÃO ---
-                        c3, c4 = st.columns(2)
-                        foi_indicado = c3.checkbox("Candidato de Indicação?", value=bool(cr.get('indicacao', False)), key=f"ind_check_{cr['id']}")
-                        quem_indicou = ""
-                        if foi_indicado:
-                            quem_indicou = c4.text_input("Quem indicou?", value=cr.get('nome_indicador', "") or "")
-
-                        if st.form_submit_button("SALVAR ALTERAÇÕES"):
-                            executar_sql("""
-                                UPDATE candidatos 
-                                SET candidato=:n, status_geral=:s, indicacao=:ind, nome_indicador=:ni 
-                                WHERE id=:id
-                            """, {"n": novo_nome_c, "s": ns, "ind": foi_indicado, "ni": quem_indicou, "id": cr['id']})
+                            st.caption("Sem currículo anexado.")
+                    with col_del:
+                        if st.button(f"🗑️ Excluir", key=f"del_{cr['id']}"):
+                            executar_sql("DELETE FROM candidatos WHERE id=:id", {"id":cr['id']})
                             st.rerun()
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
@@ -607,6 +560,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
