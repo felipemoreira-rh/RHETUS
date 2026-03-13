@@ -499,7 +499,7 @@ if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
     })
     st.success(f"Onboarding de {row['candidato']} atualizado!")
     st.rerun()
-                    st.divider()
+    st.divider()
                     
                     def render_onb_row(label, icon, key_check, key_date):
                         r_c1, r_c2, r_c3 = st.columns([0.2, 1.3, 1.5])
