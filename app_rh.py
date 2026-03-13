@@ -70,6 +70,13 @@ with engine.begin() as conn:
             av2_feito BOOLEAN DEFAULT FALSE, 
             av2_data DATE, 
             av2_responsavel TEXT
+            with engine.begin() as conn:
+    conn.execute(text("CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);"))
+    # Comando de segurança para adicionar a coluna empresa em tabelas já criadas
+    try:
+        conn.execute(text("ALTER TABLE vagas ADD COLUMN IF NOT EXISTS empresa TEXT;"))
+    except:
+        pass
         );
     """))
 
@@ -537,6 +544,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
