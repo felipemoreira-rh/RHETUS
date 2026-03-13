@@ -548,7 +548,7 @@ elif menu == "💸 OUTROS PAGAMENTOS":
     with st.expander("➕ LANÇAR NOVO PAGAMENTO"):
         with st.form("form_pg_geral"):
             c1, c2 = st.columns(2)
-            epg = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="pg_e")
+            epg = c1.selectbox("Empresa", ["Plusdin São Bernardo", "Projeto Consegui Aprender"], key="pg_e")
             mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_m")
             
             c3, c4 = st.columns([1, 2])
@@ -712,6 +712,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
