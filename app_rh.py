@@ -53,6 +53,11 @@ def carregar_dados(tabela):
 with engine.begin() as conn:
     # Lista de comandos para garantir que todas as tabelas existam
     comandos = [
+        with engine.begin() as conn:
+    try:
+        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS indicacao BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE candidatos ADD COLUMN IF NOT EXISTS nome_indicador TEXT;"))
+    except: pass
         "CREATE TABLE IF NOT EXISTS vagas (id SERIAL PRIMARY KEY, nome_vaga TEXT, area TEXT, status_vaga TEXT, gestor TEXT, data_abertura DATE, data_fechamento DATE, empresa TEXT);",
         "CREATE TABLE IF NOT EXISTS candidatos (id SERIAL PRIMARY KEY, candidato TEXT, vaga_vinculada TEXT, status_geral TEXT, arquivo_cv BYTEA, envio_proposta BOOLEAN DEFAULT FALSE, solic_documentos BOOLEAN DEFAULT FALSE, solic_contrato BOOLEAN DEFAULT FALSE, solic_acessos BOOLEAN DEFAULT FALSE);",
         "CREATE TABLE IF NOT EXISTS contratos_estagio (id SERIAL PRIMARY KEY, estagiario TEXT, instituicao TEXT, data_inicio DATE, data_fim DATE, time_equipe TEXT, solic_contrato_dp BOOLEAN DEFAULT FALSE, assina_etus BOOLEAN DEFAULT FALSE, assina_faculdade BOOLEAN DEFAULT FALSE, envio_juridico BOOLEAN DEFAULT FALSE);",
@@ -250,6 +255,33 @@ elif menu == "⚙️ CANDIDATOS":
                             st.download_button("📥 Baixar CV", cr['arquivo_cv'], f"CV_{cr['candidato']}.pdf", key=f"dl{cr['id']}")
                         else:
                             st.caption("Nenhum currículo anexado.")
+                            df_c = carregar_dados("candidatos")
+    if not df_c.empty:
+        for v_nome in df_c['vaga_vinculada'].unique():
+            st.markdown(f'<div class="vaga-header">🏢 VAGA: {v_nome.upper()}</div>', unsafe_allow_html=True)
+            for _, cr in df_c[df_c['vaga_vinculada'] == v_nome].iterrows():
+                with st.expander(f"👤 {cr['candidato']} - {cr['status_geral']}"):
+                    with st.form(f"edit_can_{cr['id']}"):
+                        c1, c2 = st.columns(2)
+                        novo_nome_c = c1.text_input("Nome do Candidato", value=cr['candidato'])
+                        etapas = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada", "Perda"]
+                        idx_etapa = etapas.index(cr['status_geral']) if cr['status_geral'] in etapas else 0
+                        ns = c2.selectbox("Etapa Atual", etapas, index=idx_etapa)
+
+                        # --- LÓGICA DE INDICAÇÃO ---
+                        c3, c4 = st.columns(2)
+                        foi_indicado = c3.checkbox("Candidato de Indicação?", value=bool(cr.get('indicacao', False)), key=f"ind_check_{cr['id']}")
+                        quem_indicou = ""
+                        if foi_indicado:
+                            quem_indicou = c4.text_input("Quem indicou?", value=cr.get('nome_indicador', "") or "")
+
+                        if st.form_submit_button("SALVAR ALTERAÇÕES"):
+                            executar_sql("""
+                                UPDATE candidatos 
+                                SET candidato=:n, status_geral=:s, indicacao=:ind, nome_indicador=:ni 
+                                WHERE id=:id
+                            """, {"n": novo_nome_c, "s": ns, "ind": foi_indicado, "ni": quem_indicou, "id": cr['id']})
+                            st.rerun()
 # --- 9. MÓDULO ONBOARDING ---
 elif menu == "🚀 ONBOARDING":
     df_c = carregar_dados("candidatos")
@@ -368,6 +400,25 @@ elif menu == "📊 DASHBOARD DP":
                 for a in alertas: st.warning(a)
             else:
                 st.success("Nenhuma avaliação de 90 dias pendente para esta semana.")
+                # --- ALERTA DE PAGAMENTO DE INDICAÇÃO ---
+        st.markdown('<div class="vaga-header">💰 PAGAMENTOS DE INDICAÇÃO (PÓS 90 DIAS)</div>', unsafe_allow_html=True)
+        # Cruzamos candidatos contratados com o controle de experiência
+        if not df_exp.empty and not df_c.empty:
+            contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicacao'] == True)]
+            
+            avisos_pagamento = []
+            for _, cand in contratados_ind.iterrows():
+                # Verifica se o candidato já completou 90 dias no controle de experiência
+                exp_vinculo = df_exp[df_exp['nome'] == cand['candidato']]
+                if not exp_vinculo.empty:
+                    data_vencimento = exp_vinculo.iloc[0]['data_inicio'] + pd.Timedelta(days=90)
+                    if date.today() >= data_vencimento:
+                        avisos_pagamento.append(f"✅ **Pagar Indicação**: {cand['nome_indicador']} (pela contratação de {cand['candidato']})")
+            
+            if avisos_pagamento:
+                for aviso in avisos_pagamento: st.info(aviso)
+            else:
+                st.write("Nenhum pagamento de indicação pendente.")
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
@@ -568,6 +619,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
