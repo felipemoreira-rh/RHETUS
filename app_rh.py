@@ -514,47 +514,54 @@ elif menu == "🎓 ESTAGIÁRIOS":
 
 # --- 12. MÓDULO FINANCEIRO (IFOOD + GERAIS) ---
 elif menu == "💰 FINANCEIRO":
+    # Criando abas para separar os assuntos e não sumir com nada
     tab1, tab2 = st.tabs(["🍔 NOTAS IFOOD", "💵 PAGAMENTOS GERAIS"])
 
-    # --- TAB 1: IFOOD ---
+    # --- ABA 1: IFOOD ---
     with tab1:
         st.subheader("Gestão de Notas Fiscais - iFood")
+        
         with st.expander("➕ LANÇAR NOTA IFOOD"):
-            with st.form("nfi"):
-                col1, col2 = st.columns(2)
-                eni = col1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="if_emp")
-                mni = col2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="if_mes")
+            with st.form("form_ifood"):
+                c1, c2 = st.columns(2)
+                eni = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="if_emp")
+                mni = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="if_mes")
                 uni = st.file_uploader("Upload da NF (PDF)", type=["pdf"], key="if_up")
-                if st.form_submit_button("SALVAR NOTA"):
+                
+                if st.form_submit_button("SALVAR NOTA IFOOD"):
                     if uni:
                         executar_sql("INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e, :m, :a, :n, :d)",
                                     {"e":eni, "m":mni, "a":uni.read(), "n":uni.name, "d":date.today()})
-                        st.success("Nota salva!")
+                        st.success("Nota iFood salva com sucesso!")
                         st.rerun()
 
+        # Listagem iFood
         df_if = carregar_dados("notas_fiscais_ifood")
         if not df_if.empty:
             for _, r in df_if.iterrows():
-                with st.expander(f"📁 {r['mes_referencia']} - {r['empresa']}"):
+                with st.expander(f"🍴 {r['mes_referencia']} - {r['empresa']}"):
                     st.download_button("📥 Baixar NF", r['arquivo_nf'], r['nome_arquivo'], key=f"dl_if_{r['id']}")
-                    if st.button(f"🗑️ Excluir", key=f"del_if_{r['id']}"):
+                    if st.button(f"🗑️ Excluir Nota", key=f"del_if_{r['id']}"):
                         executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id":r['id']})
                         st.rerun()
 
-    # --- TAB 2: PAGAMENTOS GERAIS ---
+    # --- ABA 2: PAGAMENTOS GERAIS (COM AS ALTERAÇÕES SOLICITADAS) ---
     with tab2:
-        st.subheader("Gerenciamento de Outros Pagamentos")
+        st.subheader("Outros Pagamentos")
         
         with st.expander("➕ LANÇAR NOVO PAGAMENTO"):
-            with st.form("npg_novo"):
+            with st.form("form_pag_geral"):
+                # Linha 1: Empresa e Mês
                 c1, c2 = st.columns(2)
                 epg = c1.selectbox("Empresa", ["ETUS", "BHAZ", "Evolution", "E3J", "No Name"], key="pg_emp")
                 mpg = c2.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], key="pg_mes")
                 
+                # Linha 2: Valor e Motivo (Substituindo categoria)
                 c3, c4 = st.columns([1, 2])
                 val_pg = c3.number_input("Valor (R$)", min_value=0.0, step=0.01, format="%.2f")
-                motivo_pg = c4.text_input("Motivo do Pagamento")
+                motivo_pg = c4.text_input("Motivo do Pagamento (Curto)")
 
+                # Linha 3: Datas
                 c5, c6 = st.columns(2)
                 d_envio = c5.date_input("Data de Envio", value=date.today())
                 d_pago = c6.date_input("Data de Pagamento", value=date.today())
@@ -567,25 +574,32 @@ elif menu == "💰 FINANCEIRO":
                             INSERT INTO pagamentos_gerais 
                             (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload, valor_pg, data_envio, data_pagamento, motivo) 
                             VALUES (:e, 'Geral', :m, :a, :n, :d, :v, :de, :dp, :mo)
-                        """, {"e":epg, "m":mpg, "a":upg.read(), "n":upg.name, "d":date.today(), "v":val_pg, "de":d_envio, "dp":d_pago, "mo":motivo_pg})
+                        """, {
+                            "e": epg, "m": mpg, "a": upg.read(), "n": upg.name, 
+                            "d": date.today(), "v": val_pg, "de": d_envio, "dp": d_pago, "mo": motivo_pg
+                        })
                         st.success("Pagamento registrado!")
                         st.rerun()
+                    else:
+                        st.error("O arquivo é obrigatório.")
 
+        # Listagem Pagamentos Gerais
         df_pg = carregar_dados("pagamentos_gerais")
         if not df_pg.empty:
             st.divider()
-            total = df_pg['valor_pg'].sum() if 'valor_pg' in df_pg.columns else 0
-            st.metric("Total Acumulado", f"R$ {total:,.2f}")
+            # Métrica de resumo
+            total_geral = df_pg['valor_pg'].sum() if 'valor_pg' in df_pg.columns else 0
+            st.metric("Total Acumulado (Geral)", f"R$ {total_geral:,.2f}")
 
             for _, row in df_pg.iterrows():
-                # Tratamento para colunas que podem estar vazias em registros antigos
-                v_exib = row.get('valor_pg', 0)
-                mot_exib = row.get('motivo', 'Sem motivo')
-                
-                with st.expander(f"💰 R$ {v_exib:,.2f} | {row['empresa']} - {mot_exib}"):
-                    col_a, col_b = st.columns(2)
-                    col_a.write(f"**Data Envio:** {row.get('data_envio', '---')}")
-                    col_b.write(f"**Data Pagamento:** {row.get('data_pagamento', '---')}")
+                # Título dinâmico para facilitar a leitura
+                valor = row.get('valor_pg', 0)
+                motivo = row.get('motivo', 'Sem motivo')
+                with st.expander(f"💰 R$ {valor:,.2f} | {row['empresa']} - {motivo}"):
+                    ca, cb = st.columns(2)
+                    ca.write(f"**Envio:** {row.get('data_envio')}")
+                    cb.write(f"**Pagamento:** {row.get('data_pagamento')}")
+                    st.write(f"**Mês:** {row['mes_referencia']}")
                     
                     st.download_button("📥 Baixar Comprovante", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
                     if st.button(f"🗑️ Excluir Registro", key=f"del_pg_{row['id']}"):
@@ -722,6 +736,7 @@ elif menu == "👥 COLABORADORES":
                 if col_btn2.button("🗑️ Excluir Colaborador", key=f"delcol{r['id']}"):
                     executar_sql("DELETE FROM colaboradores_ativos WHERE id=:id", {"id":r['id']})
                     st.rerun()
+
 
 
 
