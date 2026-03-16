@@ -307,33 +307,74 @@ with st.sidebar:
 
 st.markdown(f'<div class="header-rh">{menu}</div>', unsafe_allow_html=True)
 
-# --- 6. MÓDULO INDICADORES (COM CONTADOR DE DIAS) ---
+# --- 6. MÓDULO INDICADORES (COM SLA DE VAGAS) ---
 if menu == "📊 INDICADORES":
     df_v = carregar_dados("vagas")
     df_c = carregar_dados("candidatos")
     
     if not df_v.empty:
-        vagas_abertas = df_v[df_v['status_vaga'] == 'Aberta'].copy()
+        # Cálculo de dias em aberto
+        vagas_calc = df_v.copy()
+        vagas_calc['data_abertura'] = pd.to_datetime(vagas_calc['data_abertura']).dt.date
+        hoje = date.today()
         
-        if not vagas_abertas.empty:
-            vagas_abertas['data_abertura'] = pd.to_datetime(vagas_abertas['data_abertura']).dt.date
-            vagas_abertas['dias_aberta'] = vagas_abertas['data_abertura'].apply(lambda x: (date.today() - x).days if x else 0)
-            media_dias = vagas_abertas['dias_aberta'].mean()
-        else:
-            media_dias = 0
+        # Se a vaga está aberta, conta até hoje. Se fechada, conta até a data de fechamento.
+        vagas_calc['dias_aberta'] = vagas_calc.apply(
+            lambda x: (x['data_fechamento'] - x['data_abertura']).days if pd.notnull(x['data_fechamento']) 
+            else (hoje - x['data_abertura']).days, axis=1
+        )
 
+        vagas_ativas = vagas_calc[vagas_calc['status_vaga'] == 'Aberta']
+        media_dias = vagas_ativas['dias_aberta'].mean() if not vagas_ativas.empty else 0
+
+        # --- MÉTRICAS RÁPIDAS ---
         c1, c2, c3 = st.columns(3)
-        c1.metric("📌 VAGAS ATIVAS", len(vagas_abertas))
+        c1.metric("📌 VAGAS ATIVAS", len(vagas_ativas))
         c2.metric("⏳ MÉDIA TEMPO ABERTA", f"{int(media_dias)} dias")
+        c3.metric("🎯 SLA ALVO", "30 dias")
+
+        st.divider()
+
+        # --- NOVO: GRÁFICO DE SLA (CONTADOR DE DIAS) ---
+        st.subheader("⏱️ Contador de SLA por Vaga (Meta: 30 dias)")
+        
+        if not vagas_ativas.empty:
+            # Ordenar pelas vagas mais antigas
+            df_sla = vagas_ativas.sort_values('dias_aberta', ascending=False)
+            
+            fig_sla = px.bar(
+                df_sla,
+                x='dias_aberta',
+                y='nome_vaga',
+                orientation='h',
+                text='dias_aberta',
+                title="Dias em Aberto vs Limite de SLA",
+                color='dias_aberta',
+                # Escala de cores: Verde (0) -> Amarelo (15) -> Vermelho (30+)
+                color_continuous_scale=[[0, 'green'], [0.5, 'yellow'], [1, 'red']],
+                range_color=[0, 30], 
+                labels={'dias_aberta': 'Dias em Aberto', 'nome_vaga': 'Vaga'}
+            )
+            
+            # Adiciona uma linha vertical indicando o limite do SLA
+            fig_sla.add_vline(x=30, line_dash="dash", line_color="white", annotation_text="LIMITE SLA (30 dias)")
+            fig_sla.update_traces(texttemplate='%{text} dias', textposition='outside')
+            
+            st.plotly_chart(fig_sla, use_container_width=True)
+        else:
+            st.info("Não há vagas abertas no momento para monitorar o SLA.")
+
+        # --- GRÁFICOS ORIGINAIS (FUNIL E PIZZA) ---
+        st.divider()
+        col_l, col_r = st.columns(2)
         
         if not df_c.empty:
-            st.divider()
-            col_l, col_r = st.columns(2)
             with col_l:
                 st.subheader("📊 Funil de Recrutamento")
                 ordem = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Entrevista Cultura", "Finalizada"]
                 cnt = df_c['status_geral'].value_counts().reindex(ordem).fillna(0).reset_index()
                 st.plotly_chart(px.funnel(cnt, x='count', y='status_geral', color_discrete_sequence=['#8DF768']), use_container_width=True)
+            
             with col_r:
                 st.subheader("👥 Candidatos por Vaga")
                 st.plotly_chart(px.pie(df_c, names='vaga_vinculada', hole=0.4), use_container_width=True)
