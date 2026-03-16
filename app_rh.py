@@ -587,7 +587,7 @@ elif menu == "🚀 ONBOARDING":
     else:
         st.info("Nenhum onboarding pendente.")
       
-# --- 10. MÓDULO DASHBOARD DP ---
+# --- 10. MÓDULO DASHBOARD DP (COM GRÁFICO DE LINHAS) ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
     
@@ -597,19 +597,21 @@ elif menu == "📊 DASHBOARD DP":
     df_exp = carregar_dados("controle_experiencia")
     df_c = carregar_dados("candidatos") 
 
-    if not df_col.empty:
+    if not df_col.empty or not df_est.empty:
+        # --- MÉTRICAS DE TOPO ---
         c1, c2, c3, c4 = st.columns(4)
-        total_clt = len(df_col[df_col['tipo'] == 'CLT'])
-        total_pj = len(df_col[df_col['tipo'] == 'PJ'])
-        total_est = len(df_est)
+        total_clt = len(df_col[df_col['tipo'] == 'CLT']) if not df_col.empty else 0
+        total_pj = len(df_col[df_col['tipo'] == 'PJ']) if not df_col.empty else 0
+        total_est = len(df_est) if not df_est.empty else 0
         
-        c1.metric("👥 TOTAL ATIVOS", len(df_col) + total_est)
+        c1.metric("👥 TOTAL ATIVOS", (len(df_col) if not df_col.empty else 0) + total_est)
         c2.metric("📄 CLT", total_clt)
         c3.metric("🤝 PJ", total_pj)
         c4.metric("🎓 ESTAGIÁRIOS", total_est)
 
         st.divider()
 
+        # --- GRÁFICOS DE DISTRIBUIÇÃO (LADO A LADO) ---
         col_g1, col_g2 = st.columns(2)
         
         with col_g1:
@@ -625,61 +627,77 @@ elif menu == "📊 DASHBOARD DP":
         with col_g2:
             st.subheader("Estagiários por Time")
             if not df_est.empty:
-                fig_est = px.bar(df_est, x='time_equipe', color='time_equipe', title="Distribuição de Estagiários")
-                st.plotly_chart(fig_est, use_container_width=True)
+                fig_est_bar = px.bar(df_est, x='time_equipe', color='time_equipe', title="Quantidade por Área")
+                st.plotly_chart(fig_est_bar, use_container_width=True)
             else:
-                st.info("Sem estagiários cadastrados para exibir no gráfico.")
+                st.info("Sem estagiários cadastrados para o gráfico de barras.")
 
+        # --- NOVO: GRÁFICO DE LINHAS (ANDAMENTO TEMPORAL) ---
+        st.divider()
+        st.subheader("📈 Evolução de Contratos de Estágio")
+        
+        if not df_est.empty and 'data_inicio' in df_est.columns:
+            # Tratamento de datas
+            df_est_timeline = df_est.copy()
+            df_est_timeline['data_inicio'] = pd.to_datetime(df_est_timeline['data_inicio'])
+            df_est_timeline = df_est_timeline.sort_values('data_inicio')
+            
+            # Agrupar por Mês/Ano
+            df_counts = df_est_timeline.groupby(df_est_timeline['data_inicio'].dt.to_period('M')).size().reset_index(name='Quantidade')
+            df_counts['Mês/Ano'] = df_counts['data_inicio'].astype(str)
+            
+            fig_evolucao = px.line(
+                df_counts, 
+                x='Mês/Ano', 
+                y='Quantidade',
+                markers=True,
+                title="Novas Contratações de Estagiários por Mês",
+                line_shape="spline", # Deixa a linha curvada/suave
+                color_discrete_sequence=['#8DF768']
+            )
+            fig_evolucao.update_layout(hovermode="x unified")
+            st.plotly_chart(fig_evolucao, use_container_width=True)
+        else:
+            st.info("Dados de data insuficientes para gerar o gráfico de evolução temporal.")
+
+        # --- PAINEL DE ALERTAS (MANTIDO) ---
         st.divider()
         st.markdown('<div class="vaga-header">⚠️ PAINEL DE ALERTAS E PENDÊNCIAS</div>', unsafe_allow_html=True)
         
         col_a1, col_a2 = st.columns(2)
+        hoje = date.today()
 
         with col_a1:
             st.markdown("##### ⏳ Avaliações de 90 dias (Próximos 7 dias)")
-            hoje = date.today()
             alertas_exp = []
             if not df_exp.empty:
                 for _, r in df_exp.iterrows():
-                    data_inicio = pd.to_datetime(r['data_inicio']).date()
-                    d90 = data_inicio + pd.Timedelta(days=90)
-                    if not r['av2_feito'] and (d90 - hoje).days <= 7:
-                        alertas_exp.append(f"🟠 **{r['nome']}**: Vencimento em {d90.strftime('%d/%m/%Y')}")
+                    if r['data_inicio']:
+                        d90 = pd.to_datetime(r['data_inicio']).date() + timedelta(days=90)
+                        if not r.get('av2_feito') and (d90 - hoje).days <= 7:
+                            alertas_exp.append(f"🟠 **{r['nome']}**: Vencimento em {d90.strftime('%d/%m/%Y')}")
             
             if alertas_exp:
-                for a in alertas_exp:
-                    st.warning(a)
-            else:
-                st.success("Nenhuma avaliação de 90 dias pendente para breve.")
+                for a in alertas_exp: st.warning(a)
+            else: st.success("Nenhuma avaliação de 90 dias pendente.")
 
-        # ALERTA 2: PAGAMENTO DE INDICAÇÕES
         with col_a2:
             st.markdown("##### 💰 Bônus de Indicação (Pós 90 dias)")
             avisos_pagamento = []
-            
             if not df_c.empty:
-                contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicacao'] == True)]
-                
+                contratados_ind = df_c[(df_c['status_geral'] == 'Finalizada') & (df_c['indicado_por'].notnull())]
                 for _, cand in contratados_ind.iterrows():
-                    if not df_exp.empty:
-                        exp_v = df_exp[df_exp['nome'] == cand['candidato']]
-                        if not exp_v.empty:
-                            data_ini = pd.to_datetime(exp_v.iloc[0]['data_inicio']).date()
-                            data_liberacao_pg = data_ini + pd.Timedelta(days=90)
-                            
-                            if hoje >= data_liberacao_pg:
-                                avisos_pagamento.append(
-                                    f"✅ **Liberado**: Pagar bônus para **{cand['nome_indicador']}** "
-                                    f"(Indicação de {cand['candidato']})"
-                                )
+                    if cand['data_inicio']:
+                        data_liberacao = pd.to_datetime(cand['data_inicio']).date() + timedelta(days=90)
+                        if hoje >= data_liberacao:
+                            avisos_pagamento.append(f"✅ **Liberado**: {cand['indicado_por']} (Indicação de {cand['candidato']})")
             
             if avisos_pagamento:
-                for aviso in avisos_pagamento:
-                    st.info(aviso)
-            else:
-                st.write("Sem pagamentos de indicação pendentes no momento.")
+                for aviso in avisos_pagamento: st.info(aviso)
+            else: st.success("Sem bônus pendentes de liberação.")
+            
     else:
-        st.info("Adicione colaboradores ativos para visualizar os indicadores de DP.")
+        st.info("Nenhum dado de colaborador ou estagiário encontrado.")
         
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
