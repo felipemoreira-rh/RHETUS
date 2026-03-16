@@ -25,7 +25,7 @@ def enviar_email_foto(email_candidato, nome_candidato):
             <li>Três curiosidades sobre você (hobby, talento, mania, lugar favorito...);</li>
         </ul>
         <p>Essas informações serão usadas na sua apresentação à equipe. 😄<br>
-        <strong>Contamos com seu envio até 22/01/2026.</strong></p>
+        <strong>Contamos com seu envio até [Data_envio_foto].</strong></p>
         <p>🎯 <strong>Orientações para a foto:</strong><br>
         - Foto do peito para cima;<br>
         - Fundo neutro (parede branca, cinza ou clara);<br>
