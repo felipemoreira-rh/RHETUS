@@ -486,12 +486,11 @@ elif menu == "⚙️ CANDIDATOS":
     else:
         st.info("Nenhum candidato cadastrado.")
 
-# --- 9. MÓDULO ONBOARDING (VERSÃO COMPLETA E REVISADA) ---
+# --- 9. MÓDULO ONBOARDING (CHECKBOX PARA FOTO/CURIOSIDADE + TRAVA) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     df_c = carregar_dados("candidatos")
     
-    # Filtra apenas quem está com status 'Finalizada'
     if not df_c.empty:
         df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
     else:
@@ -501,26 +500,21 @@ elif menu == "🚀 ONBOARDING":
         for _, row in df_onboarding.iterrows():
             with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
                 
-                # --- 💰 LÓGICA DO ALERTA DE BÔNUS (90 DIAS) ---
+                # --- LÓGICA DO ALERTA DE BÔNUS ---
                 indicador = row.get('indicado_por')
                 valor = row.get('valor_bonus', 0)
                 data_inicio = row.get('data_inicio')
 
                 if indicador and valor > 0 and data_inicio:
-                    # Cálculo de 90 dias usando timedelta (requer import no topo)
                     dt_inicio = pd.to_datetime(data_inicio).date()
                     data_pagamento_bonus = dt_inicio + timedelta(days=90)
                     dias_restantes = (data_pagamento_bonus - date.today()).days
 
                     if dias_restantes <= 90:
                         status_bonus = "🔴 VENCIDO" if dias_restantes <= 0 else f"⏳ EM {dias_restantes} DIAS"
-                        st.warning(f"""
-                        💰 **ALERTA DE BÔNUS:** {indicador} deve receber **R$ {valor:.2f}**.
-                        📅 Previsão: {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})
-                        """)
+                        st.warning(f"💰 **BÔNUS:** {indicador} deve receber R$ {valor:.2f} em {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})")
 
-                # --- 📝 FORMULÁRIO DE CHECKLIST ---
-                with st.form(key=f"onb_form_completo_{row['id']}"):
+                with st.form(key=f"onb_form_chk_{row['id']}"):
                     st.markdown("**📅 Planejamento de Entrada**")
                     data_ini_val = pd.to_datetime(row['data_inicio']).date() if row.get('data_inicio') else date.today()
                     v_ini = st.date_input("Data Prevista de Início", value=data_ini_val, key=f"dt_in_{row['id']}")
@@ -530,42 +524,48 @@ elif menu == "🚀 ONBOARDING":
                     
                     c1, c2 = st.columns(2)
                     
-                    # Verificação para travar o campo de foto após o envio
-                    ja_enviado = bool(row.get('foto_curiosidades'))
+                    # Trava de segurança para os envios de e-mail e conferência de foto
+                    ja_enviou_email = bool(row.get('foto_curiosidades'))
+                    ja_fez_envio_foto = bool(row.get('envio_foto_concluido')) # Assume-se que esta coluna exista ou use a mesma lógica
 
                     with c1:
                         c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')), key=f"c_pr_{row['id']}")
                         c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')), key=f"c_dc_{row['id']}")
                         
-                        # Checkbox que trava se já tiver sido enviado
-                        c_foto = st.checkbox("Foto/Curiosidades (Dispara E-mail)", 
-                                             value=ja_enviado, 
-                                             disabled=ja_enviado, 
-                                             key=f"c_ft_{row['id']}")
+                        # Checkbox de Automação (Dispara E-mail) - TRAVADO SE TRUE
+                        c_foto_email = st.checkbox("Disparar E-mail (Foto/Curiosidades)", 
+                                             value=ja_enviou_email, 
+                                             disabled=ja_enviou_email, 
+                                             key=f"c_ft_mail_{row['id']}")
                     
                     with c2:
                         c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')), key=f"c_ct_{row['id']}")
                         c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')), key=f"c_ac_{row['id']}")
                         
-                        # Rótulo atualizado para "Envio de foto e curiosidade"
-                        data_foto_val = pd.to_datetime(row.get('data_foto_curiosidades')).date() if row.get('data_foto_curiosidades') else date.today()
-                        d_foto = st.date_input("Envio de foto e curiosidade", value=data_foto_val, key=f"d_ft_{row['id']}")
+                        # --- ALTERAÇÃO SOLICITADA: DATA VIROU CHECKBOX ---
+                        # Aqui usamos o valor de 'data_foto_curiosidades' como booleano para o checkbox
+                        ja_recebeu_foto = bool(row.get('data_foto_curiosidades')) 
+                        
+                        c_foto_concluido = st.checkbox("Envio de foto e curiosidade", 
+                                                      value=ja_recebeu_foto, 
+                                                      disabled=ja_recebeu_foto, # TRAVA DE ALTERAÇÃO
+                                                      key=f"c_ft_chk_{row['id']}")
 
-                    # --- 💾 BOTÃO DE SALVAMENTO ---
                     if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
-                        # Lógica de E-mail: Dispara apenas se estiver marcando pela primeira vez
-                        if c_foto and not ja_enviado:
+                        # Lógica de E-mail
+                        if c_foto_email and not ja_enviou_email:
                             if row.get('email'):
-                                with st.spinner("Enviando e-mail..."):
-                                    if enviar_email_foto(row['email'], row['candidato']):
-                                        st.toast(f"📧 E-mail enviado para {row['candidato']}!", icon="✅")
+                                if enviar_email_foto(row['email'], row['candidato']):
+                                    st.toast("📧 E-mail enviado!", icon="✅")
                             else:
-                                st.error("Erro: Candidato não possui e-mail cadastrado.")
+                                st.error("Candidato sem e-mail.")
 
-                        # Atualização no banco Neon
+                        # No banco de dados, para o checkbox de "Envio de foto e curiosidade", 
+                        # vamos salvar 'True' ou '1' na coluna que antes era data
                         params_save = {
                             "di": v_ini, "cp": c_prop, "cd": c_doc,
-                            "cf": c_foto, "dfc": d_foto,
+                            "cf": c_foto_email, 
+                            "dfc": 1 if c_foto_concluido else 0, # Salva como flag
                             "cc": c_cont, "ca": c_acess, "id": row['id']
                         }
                         
@@ -577,10 +577,10 @@ elif menu == "🚀 ONBOARDING":
                             WHERE id=:id
                         """
                         if executar_sql(sql_up, params_save):
-                            st.success(f"Progresso de {row['candidato']} atualizado!")
+                            st.success("Dados salvos!")
                             st.rerun()
     else:
-        st.info("Nenhum candidato aguardando Onboarding no momento.")
+        st.info("Nenhum onboarding pendente.")
       
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
