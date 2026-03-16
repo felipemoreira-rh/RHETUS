@@ -61,6 +61,7 @@ def enviar_email_foto(email_candidato, nome_candidato):
         
 import streamlit as st
 import pandas as pd
+from datetime import date, datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
@@ -485,11 +486,12 @@ elif menu == "⚙️ CANDIDATOS":
     else:
         st.info("Nenhum candidato cadastrado.")
 
-# --- 9. MÓDULO ONBOARDING (AJUSTADO: RÓTULOS E SEGURANÇA) ---
+# --- 9. MÓDULO ONBOARDING (VERSÃO COMPLETA E REVISADA) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     df_c = carregar_dados("candidatos")
     
+    # Filtra apenas quem está com status 'Finalizada'
     if not df_c.empty:
         df_onboarding = df_c[df_c['status_geral'] == 'Finalizada']
     else:
@@ -499,21 +501,26 @@ elif menu == "🚀 ONBOARDING":
         for _, row in df_onboarding.iterrows():
             with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
                 
-                # --- LÓGICA DO ALERTA DE BÔNUS (90 DIAS) ---
+                # --- 💰 LÓGICA DO ALERTA DE BÔNUS (90 DIAS) ---
                 indicador = row.get('indicado_por')
                 valor = row.get('valor_bonus', 0)
                 data_inicio = row.get('data_inicio')
 
                 if indicador and valor > 0 and data_inicio:
+                    # Cálculo de 90 dias usando timedelta (requer import no topo)
                     dt_inicio = pd.to_datetime(data_inicio).date()
                     data_pagamento_bonus = dt_inicio + timedelta(days=90)
                     dias_restantes = (data_pagamento_bonus - date.today()).days
 
                     if dias_restantes <= 90:
                         status_bonus = "🔴 VENCIDO" if dias_restantes <= 0 else f"⏳ EM {dias_restantes} DIAS"
-                        st.warning(f"💰 **PAGAMENTO DE INDICAÇÃO:** {indicador} deve receber R$ {valor:.2f} em {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})")
+                        st.warning(f"""
+                        💰 **ALERTA DE BÔNUS:** {indicador} deve receber **R$ {valor:.2f}**.
+                        📅 Previsão: {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})
+                        """)
 
-                with st.form(key=f"onb_form_revisto_{row['id']}"):
+                # --- 📝 FORMULÁRIO DE CHECKLIST ---
+                with st.form(key=f"onb_form_completo_{row['id']}"):
                     st.markdown("**📅 Planejamento de Entrada**")
                     data_ini_val = pd.to_datetime(row['data_inicio']).date() if row.get('data_inicio') else date.today()
                     v_ini = st.date_input("Data Prevista de Início", value=data_ini_val, key=f"dt_in_{row['id']}")
@@ -523,14 +530,14 @@ elif menu == "🚀 ONBOARDING":
                     
                     c1, c2 = st.columns(2)
                     
-                    # Verificamos se o e-mail já foi enviado anteriormente para travar o campo
+                    # Verificação para travar o campo de foto após o envio
                     ja_enviado = bool(row.get('foto_curiosidades'))
 
                     with c1:
                         c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')), key=f"c_pr_{row['id']}")
                         c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')), key=f"c_dc_{row['id']}")
                         
-                        # Trava o checkbox se já tiver sido enviado (impede desmarcar)
+                        # Checkbox que trava se já tiver sido enviado
                         c_foto = st.checkbox("Foto/Curiosidades (Dispara E-mail)", 
                                              value=ja_enviado, 
                                              disabled=ja_enviado, 
@@ -540,20 +547,22 @@ elif menu == "🚀 ONBOARDING":
                         c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')), key=f"c_ct_{row['id']}")
                         c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')), key=f"c_ac_{row['id']}")
                         
-                        # Rótulo alterado conforme sua solicitação
+                        # Rótulo atualizado para "Envio de foto e curiosidade"
                         data_foto_val = pd.to_datetime(row.get('data_foto_curiosidades')).date() if row.get('data_foto_curiosidades') else date.today()
                         d_foto = st.date_input("Envio de foto e curiosidade", value=data_foto_val, key=f"d_ft_{row['id']}")
 
+                    # --- 💾 BOTÃO DE SALVAMENTO ---
                     if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
-                        # Só envia e-mail se estiver marcando AGORA (estava False e virou True)
+                        # Lógica de E-mail: Dispara apenas se estiver marcando pela primeira vez
                         if c_foto and not ja_enviado:
                             if row.get('email'):
-                                sucesso = enviar_email_foto(row['email'], row['candidato'])
-                                if sucesso:
-                                    st.toast(f"📧 E-mail enviado!", icon="✅")
+                                with st.spinner("Enviando e-mail..."):
+                                    if enviar_email_foto(row['email'], row['candidato']):
+                                        st.toast(f"📧 E-mail enviado para {row['candidato']}!", icon="✅")
                             else:
-                                st.error("Candidato sem e-mail cadastrado.")
+                                st.error("Erro: Candidato não possui e-mail cadastrado.")
 
+                        # Atualização no banco Neon
                         params_save = {
                             "di": v_ini, "cp": c_prop, "cd": c_doc,
                             "cf": c_foto, "dfc": d_foto,
@@ -568,10 +577,11 @@ elif menu == "🚀 ONBOARDING":
                             WHERE id=:id
                         """
                         if executar_sql(sql_up, params_save):
-                            st.success("Dados salvos!")
+                            st.success(f"Progresso de {row['candidato']} atualizado!")
                             st.rerun()
     else:
-        st.info("Nenhum candidato em Onboarding.")
+        st.info("Nenhum candidato aguardando Onboarding no momento.")
+      
 # --- 10. MÓDULO DASHBOARD DP ---
 elif menu == "📊 DASHBOARD DP":
     st.subheader("Indicadores de Departamento Pessoal")
