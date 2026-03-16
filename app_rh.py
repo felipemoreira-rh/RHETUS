@@ -459,7 +459,7 @@ elif menu == "⚙️ CANDIDATOS":
                                 idx_v = v_list.index(cand['vaga_vinculada']) if cand['vaga_vinculada'] in v_list else 0
                                 edit_vaga = col1.selectbox("Vaga", v_list, index=idx_v, disabled=not edit_mode)
                                 
-                                st_opts = ["Triagem", "Entrevista", "Finalizada", "Reprovado"]
+                                st_opts = ["Triagem", "Entrevista RH", "Teste Técnico", "Entrevista Gestor", "Aprovado", "Finalizada", "Reprovado"]
                                 idx_s = st_opts.index(st_atual) if st_atual in st_opts else 0
                                 edit_status = col2.selectbox("Status", st_opts, index=idx_s, disabled=not edit_mode)
                                 
