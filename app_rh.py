@@ -486,7 +486,7 @@ elif menu == "⚙️ CANDIDATOS":
     else:
         st.info("Nenhum candidato cadastrado.")
 
-# --- 9. MÓDULO ONBOARDING (CHECKBOX PARA FOTO/CURIOSIDADE + TRAVA) ---
+# --- 9. MÓDULO ONBOARDING (CORREÇÃO SQL DATA/CHECKBOX) ---
 elif menu == "🚀 ONBOARDING":
     st.markdown("### 🚀 Gestão de Onboarding")
     df_c = carregar_dados("candidatos")
@@ -500,7 +500,7 @@ elif menu == "🚀 ONBOARDING":
         for _, row in df_onboarding.iterrows():
             with st.expander(f"👤 {row['candidato']} - {row['vaga_vinculada']}"):
                 
-                # --- LÓGICA DO ALERTA DE BÔNUS ---
+                # --- ALERTA DE BÔNUS (90 DIAS) ---
                 indicador = row.get('indicado_por')
                 valor = row.get('valor_bonus', 0)
                 data_inicio = row.get('data_inicio')
@@ -512,9 +512,9 @@ elif menu == "🚀 ONBOARDING":
 
                     if dias_restantes <= 90:
                         status_bonus = "🔴 VENCIDO" if dias_restantes <= 0 else f"⏳ EM {dias_restantes} DIAS"
-                        st.warning(f"💰 **BÔNUS:** {indicador} deve receber R$ {valor:.2f} em {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})")
+                        st.warning(f"💰 **BÔNUS:** {indicador} recebe R$ {valor:.2f} em {data_pagamento_bonus.strftime('%d/%m/%Y')} ({status_bonus})")
 
-                with st.form(key=f"onb_form_chk_{row['id']}"):
+                with st.form(key=f"onb_form_sql_fix_{row['id']}"):
                     st.markdown("**📅 Planejamento de Entrada**")
                     data_ini_val = pd.to_datetime(row['data_inicio']).date() if row.get('data_inicio') else date.today()
                     v_ini = st.date_input("Data Prevista de Início", value=data_ini_val, key=f"dt_in_{row['id']}")
@@ -524,15 +524,18 @@ elif menu == "🚀 ONBOARDING":
                     
                     c1, c2 = st.columns(2)
                     
-                    # Trava de segurança para os envios de e-mail e conferência de foto
+                    # Trava de segurança para e-mail
                     ja_enviou_email = bool(row.get('foto_curiosidades'))
-                    ja_fez_envio_foto = bool(row.get('envio_foto_concluido')) # Assume-se que esta coluna exista ou use a mesma lógica
+                    
+                    # Trava de segurança para Recebimento de Foto (verifica se há uma data gravada)
+                    # Se data_foto_curiosidades não for nulo, consideramos como "Concluído"
+                    ja_recebeu_foto = row.get('data_foto_curiosidades') is not None
 
                     with c1:
                         c_prop = st.checkbox("Envio de Proposta", value=bool(row.get('envio_proposta')), key=f"c_pr_{row['id']}")
                         c_doc = st.checkbox("Solicitação de Documentos", value=bool(row.get('solic_documentos')), key=f"c_dc_{row['id']}")
                         
-                        # Checkbox de Automação (Dispara E-mail) - TRAVADO SE TRUE
+                        # Checkbox do E-mail (Trava se já enviado)
                         c_foto_email = st.checkbox("Disparar E-mail (Foto/Curiosidades)", 
                                              value=ja_enviou_email, 
                                              disabled=ja_enviou_email, 
@@ -542,13 +545,10 @@ elif menu == "🚀 ONBOARDING":
                         c_cont = st.checkbox("Assinatura de Contrato", value=bool(row.get('solic_contrato')), key=f"c_ct_{row['id']}")
                         c_acess = st.checkbox("Acessos e Equipamentos", value=bool(row.get('solic_acessos')), key=f"c_ac_{row['id']}")
                         
-                        # --- ALTERAÇÃO SOLICITADA: DATA VIROU CHECKBOX ---
-                        # Aqui usamos o valor de 'data_foto_curiosidades' como booleano para o checkbox
-                        ja_recebeu_foto = bool(row.get('data_foto_curiosidades')) 
-                        
+                        # CHECKBOX NO LUGAR DA DATA (Trava se já houver data no banco)
                         c_foto_concluido = st.checkbox("Envio de foto e curiosidade", 
                                                       value=ja_recebeu_foto, 
-                                                      disabled=ja_recebeu_foto, # TRAVA DE ALTERAÇÃO
+                                                      disabled=ja_recebeu_foto, 
                                                       key=f"c_ft_chk_{row['id']}")
 
                     if st.form_submit_button("💾 GRAVAR PROGRESSO", use_container_width=True):
@@ -560,12 +560,20 @@ elif menu == "🚀 ONBOARDING":
                             else:
                                 st.error("Candidato sem e-mail.")
 
-                        # No banco de dados, para o checkbox de "Envio de foto e curiosidade", 
-                        # vamos salvar 'True' ou '1' na coluna que antes era data
+                        # --- LÓGICA PARA NÃO DAR ERRO DE TIPO (SQL) ---
+                        # Se o checkbox foi marcado agora, enviamos a data de HOJE. 
+                        # Se já estava marcado (ja_recebeu_foto é True), mantemos a data que já estava lá.
+                        if ja_recebeu_foto:
+                            valor_data_foto = row.get('data_foto_curiosidades')
+                        elif c_foto_concluido:
+                            valor_data_foto = date.today()
+                        else:
+                            valor_data_foto = None
+
                         params_save = {
                             "di": v_ini, "cp": c_prop, "cd": c_doc,
                             "cf": c_foto_email, 
-                            "dfc": 1 if c_foto_concluido else 0, # Salva como flag
+                            "dfc": valor_data_foto, # Agora enviamos uma DATA ou NULL
                             "cc": c_cont, "ca": c_acess, "id": row['id']
                         }
                         
@@ -577,7 +585,7 @@ elif menu == "🚀 ONBOARDING":
                             WHERE id=:id
                         """
                         if executar_sql(sql_up, params_save):
-                            st.success("Dados salvos!")
+                            st.success("Dados salvos com sucesso!")
                             st.rerun()
     else:
         st.info("Nenhum onboarding pendente.")
