@@ -57,17 +57,48 @@ TABELAS_PERMITIDAS = {
     "notas_fiscais_ifood", "pagamentos_gerais"
 }
 
-@st.cache_data(ttl=30)  # Corrigido: era ttl=1, o que praticamente desativava o cache
+# Colunas BYTEA por tabela — excluídas do cache para evitar UnserializableReturnValueError
+COLUNAS_BINARIAS = {
+    "candidatos": ["arquivo_cv"],
+    "notas_fiscais_ifood": ["arquivo_nf"],
+    "pagamentos_gerais": ["arquivo_pg"],
+}
+
+@st.cache_data(ttl=30)
 def carregar_dados(tabela):
+    """Carrega dados sem colunas binárias (BYTEA). Use carregar_arquivo() para downloads."""
     if tabela not in TABELAS_PERMITIDAS:
         st.error(f"Tabela '{tabela}' não permitida.")
         return pd.DataFrame()
     try:
+        colunas_excluir = COLUNAS_BINARIAS.get(tabela, [])
         with engine.connect() as conn:
+            if colunas_excluir:
+                # Busca todas as colunas exceto as binárias
+                result = conn.execute(text(f"SELECT * FROM {tabela} LIMIT 0"))
+                todas = [col for col in result.keys() if col not in colunas_excluir]
+                cols_sql = ", ".join(todas)
+                return pd.read_sql(text(f"SELECT {cols_sql} FROM {tabela} ORDER BY id DESC"), conn)
             return pd.read_sql(text(f"SELECT * FROM {tabela} ORDER BY id DESC"), conn)
     except Exception as e:
         st.warning(f"Erro ao carregar '{tabela}': {e}")
         return pd.DataFrame()
+
+def carregar_arquivo(tabela, coluna_binaria, registro_id):
+    """Busca um único arquivo binário pelo id — chamado apenas no momento do download."""
+    if tabela not in TABELAS_PERMITIDAS:
+        return None
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT {coluna_binaria} FROM {tabela} WHERE id = :id"),
+                {"id": registro_id}
+            )
+            row = result.fetchone()
+            return bytes(row[0]) if row and row[0] else None
+    except Exception as e:
+        st.error(f"Erro ao buscar arquivo: {e}")
+        return None
 
 
 # --- FUNÇÃO DE ENVIO DE E-MAIL (ONBOARDING) ---
@@ -778,7 +809,11 @@ elif menu == "🍔 IFOOD":
     if not df_if.empty:
         for _, r in df_if.iterrows():
             with st.expander(f"🍴 {r['mes_referencia']} - {r['empresa']}"):
-                st.download_button("📥 Baixar NF", r['arquivo_nf'], r['nome_arquivo'], key=f"dl_if_{r['id']}")
+                arquivo_nf = carregar_arquivo("notas_fiscais_ifood", "arquivo_nf", r['id'])
+                if arquivo_nf:
+                    st.download_button("📥 Baixar NF", arquivo_nf, r['nome_arquivo'], key=f"dl_if_{r['id']}")
+                else:
+                    st.caption("Arquivo não disponível.")
                 if st.button(f"🗑️ Excluir", key=f"del_if_{r['id']}"):
                     executar_sql("DELETE FROM notas_fiscais_ifood WHERE id=:id", {"id": r['id']})
                     st.rerun()
