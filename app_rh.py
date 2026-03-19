@@ -34,12 +34,55 @@ st.markdown("""
   --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.05);
   --shadow-lg:0 2px 8px rgba(0,0,0,.1),0 8px 32px rgba(0,0,0,.06);
 }
-html, body, [class*="css"] { font-family: var(--fb) !important; font-size: 13px; background: var(--bg) !important; color: var(--txt) !important; }
-.main .block-container { padding: 0 !important; max-width: 100% !important; }
-section[data-testid="stSidebar"] { background: var(--nav) !important; border-right: none !important; }
-section[data-testid="stSidebar"] > div { padding: 0 !important; }
-section[data-testid="stSidebar"] * { color: var(--nav-mut) !important; font-family: var(--fb) !important; }
+/* ── FORCE LIGHT THEME ── */
+html, body { background: #eef1f6 !important; color: #1a2035 !important; }
+.stApp { background-color: #eef1f6 !important; }
+[data-testid="stAppViewContainer"] { background-color: #eef1f6 !important; }
+[data-testid="stAppViewBlockContainer"], [data-testid="block-container"],
+.main, .main > div, .element-container, [data-testid="stVerticalBlock"],
+[data-testid="stVerticalBlockBorderWrapper"] { background: transparent !important; }
+.stMarkdown, .stMarkdown > div { background: transparent !important; color: #1a2035 !important; }
+p, span, label, h1, h2, h3, h4, h5, li { color: #1a2035 !important; }
+html, body, p, span, div, label, button, input, select, textarea, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
+.main .block-container { padding: 0 !important; max-width: 100% !important; background: transparent !important; }
+section[data-testid="stSidebar"] { background: #0f1929 !important; border-right: none !important; }
+section[data-testid="stSidebar"] > div { padding: 0 !important; background: #0f1929 !important; }
+section[data-testid="stSidebar"] * { color: #6b80a0 !important; font-family: 'DM Sans', sans-serif !important; }
+section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.12) !important; color: #e8edf5 !important; }
 header[data-testid="stHeader"] { display: none !important; }
+div[data-testid="stExpander"] { background: #ffffff !important; border: 1px solid rgba(0,0,0,0.07) !important; border-radius: 7px !important; margin-bottom: 8px !important; box-shadow: 0 1px 3px rgba(0,0,0,.08) !important; }
+div[data-testid="stExpander"] > div, div[data-testid="stExpander"] details { background: #ffffff !important; }
+div[data-testid="stExpander"] summary { background: #ffffff !important; color: #1a2035 !important; }
+div[data-testid="stExpander"] summary p { color: #1a2035 !important; font-size: 12.5px !important; font-weight: 500 !important; }
+div[data-testid="stExpander"] details > div { background: #f5f7fa !important; }
+div[data-testid="stForm"] { background: transparent !important; border: none !important; padding: 0 !important; }
+div[data-baseweb="input"] input, div[data-baseweb="base-input"], div[data-baseweb="base-input"] input { background: #ffffff !important; color: #1a2035 !important; }
+div[data-baseweb="select"] div[role="combobox"] { background: #ffffff !important; color: #1a2035 !important; border-color: rgba(0,0,0,0.07) !important; }
+div[data-baseweb="input"] input::placeholder { color: #9eacc0 !important; }
+ul[data-baseweb="menu"] { background: #ffffff !important; border: 1px solid rgba(0,0,0,0.1) !important; }
+ul[data-baseweb="menu"] li { background: #ffffff !important; color: #1a2035 !important; }
+ul[data-baseweb="menu"] li:hover { background: #e8f0fb !important; }
+label[data-testid="stWidgetLabel"] p { font-size: 9px !important; color: #6b7a99 !important; text-transform: uppercase !important; letter-spacing: 1px !important; font-weight: 600 !important; }
+div[data-testid="stCheckbox"] label span, div[data-testid="stToggle"] label span { color: #1a2035 !important; }
+div[data-testid="stDateInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input { background: #ffffff !important; color: #1a2035 !important; }
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] { background: #e8f0fb !important; color: #1565c0 !important; }
+button[kind="primary"] { background: #1565c0 !important; border-color: #1565c0 !important; color: #ffffff !important; font-size: 11px !important; font-weight: 600 !important; border-radius: 7px !important; }
+button[kind="secondary"], button[kind="secondaryFormSubmit"] { background: #ffffff !important; border: 1px solid rgba(0,0,0,0.07) !important; color: #6b7a99 !important; font-size: 11px !important; border-radius: 7px !important; }
+div[data-testid="stTabs"] [data-baseweb="tab-list"] { background: #f5f7fa !important; border: 1px solid rgba(0,0,0,0.07) !important; border-radius: 7px !important; padding: 3px !important; }
+div[data-testid="stTabs"] [data-baseweb="tab"] { border-radius: 5px !important; font-size: 11px !important; color: #6b7a99 !important; background: transparent !important; }
+div[data-testid="stTabs"] [aria-selected="true"] { background: #ffffff !important; color: #1a2035 !important; font-weight: 500 !important; box-shadow: 0 1px 4px rgba(0,0,0,.1) !important; }
+div[data-testid="stTabs"] [data-baseweb="tab-panel"] { background: transparent !important; padding: 0 !important; }
+div[data-testid="metric-container"] { background: #ffffff !important; border: 1px solid rgba(0,0,0,0.07) !important; border-radius: 10px !important; padding: 14px 16px !important; box-shadow: 0 1px 3px rgba(0,0,0,.08) !important; }
+div[data-testid="stSuccess"] { background: #e8f5ee !important; border: 1px solid #b2ddc4 !important; border-radius: 7px !important; }
+div[data-testid="stSuccess"] p { color: #0d7a3e !important; }
+div[data-testid="stError"] { background: #fdecea !important; border: 1px solid #f5b7b0 !important; border-radius: 7px !important; }
+div[data-testid="stError"] p { color: #c0392b !important; }
+div[data-testid="stCaptionContainer"] p { color: #6b7a99 !important; font-size: 11px !important; }
+.stDownloadButton button { background: #ffffff !important; border: 1px solid rgba(0,0,0,0.07) !important; color: #1565c0 !important; font-size: 11px !important; border-radius: 7px !important; }
+div[data-testid="stFileUploader"] { background: #f5f7fa !important; border: 1.5px dashed rgba(0,0,0,0.13) !important; border-radius: 7px !important; }
+div[data-testid="stFileUploader"] * { color: #6b7a99 !important; }
+div[data-testid="column"] { background: transparent !important; }
+[data-testid="stSidebarNav"] { display: none !important; }
 .etus-topbar { background: #fff; border-bottom: 1px solid var(--b1); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 20px; }
 .tb-title { font-family: var(--fd); font-size: 16px; font-weight: 700; color: var(--txt); display: flex; align-items: center; gap: 7px; }
 .tb-crumb { font-size: 11px; color: var(--mut); }
