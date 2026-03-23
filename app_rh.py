@@ -632,6 +632,7 @@ elif menu == "📊 DASHBOARD DP":
     df_c = carregar_dados("candidatos")
 
     if not df_col.empty or not df_est.empty:
+        # --- MÉTRICAS PRINCIPAIS ---
         c1, c2, c3, c4 = st.columns(4)
         total_clt = len(df_col[df_col['tipo'] == 'CLT']) if not df_col.empty else 0
         total_pj = len(df_col[df_col['tipo'] == 'PJ']) if not df_col.empty else 0
@@ -644,23 +645,46 @@ elif menu == "📊 DASHBOARD DP":
 
         st.divider()
 
+        # --- GRÁFICOS DE DISTRIBUIÇÃO ---
         col_g1, col_g2 = st.columns(2)
+        
         with col_g1:
             st.subheader("Distribuição por Vínculo")
-            fig_vinculo = px.pie(
-                values=[total_clt, total_pj, total_est],
-                names=['CLT', 'PJ', 'Estágio'],
-                hole=0.4,
-                color_discrete_sequence=['#8DF768', '#00d4ff', '#ffeb3b']
+            # Alterado de px.pie para px.bar conforme solicitado
+            df_vinculo_contagem = pd.DataFrame({
+                'Vínculo': ['CLT', 'PJ', 'Estágio'],
+                'Quantidade': [total_clt, total_pj, total_est]
+            })
+            fig_vinculo = px.bar(
+                df_vinculo_contagem, 
+                x='Vínculo', 
+                y='Quantidade',
+                color='Vínculo',
+                text_auto=True,
+                color_discrete_map={
+                    'CLT': '#8DF768',
+                    'PJ': '#00d4ff',
+                    'Estágio': '#ffeb3b'
+                }
             )
+            fig_vinculo.update_layout(showlegend=False)
             st.plotly_chart(fig_vinculo, use_container_width=True)
+
         with col_g2:
             st.subheader("Estagiários por Time")
             if not df_est.empty:
-                fig_est_bar = px.bar(df_est, x='time_equipe', color='time_equipe', title="Quantidade por Área")
+                fig_est_bar = px.bar(
+                    df_est, 
+                    x='time_equipe', 
+                    color='time_equipe', 
+                    title="Quantidade por Área",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
                 st.plotly_chart(fig_est_bar, use_container_width=True)
 
         st.divider()
+
+        # --- EVOLUÇÃO TEMPORAL ---
         st.subheader("📈 Evolução de Contratos de Estágio")
         if not df_est.empty and 'data_inicio' in df_est.columns:
             df_est_timeline = df_est.copy()
@@ -671,6 +695,8 @@ elif menu == "📊 DASHBOARD DP":
             st.plotly_chart(fig_evolucao, use_container_width=True)
 
         st.divider()
+
+        # --- PROGRESSO DOS CONTRATOS ---
         st.subheader("⏳ Progresso dos Contratos de Estágio")
         if not df_est.empty:
             df_prog = df_est.copy()
@@ -702,6 +728,8 @@ elif menu == "📊 DASHBOARD DP":
             st.info("Sem dados de vigência para calcular o progresso.")
 
         st.divider()
+
+        # --- PAINEL DE ALERTAS ---
         st.markdown('<div class="vaga-header">⚠️ PAINEL DE ALERTAS E PENDÊNCIAS</div>', unsafe_allow_html=True)
         col_a1, col_a2 = st.columns(2)
         hoje_dt = date.today()
@@ -713,6 +741,7 @@ elif menu == "📊 DASHBOARD DP":
                 for _, r in df_exp.iterrows():
                     if r['data_inicio']:
                         d90 = pd.to_datetime(r['data_inicio']).date() + timedelta(days=90)
+                        # Alerta se não foi feito e faltam 7 dias ou menos para o vencimento
                         if not r.get('av2_feito') and (d90 - hoje_dt).days <= 7:
                             alertas_exp.append(f"🟠 **{r['nome']}**: Vencimento em {d90.strftime('%d/%m/%Y')}")
             if alertas_exp:
@@ -742,7 +771,6 @@ elif menu == "📊 DASHBOARD DP":
                 st.success("Sem bônus pendentes de liberação.")
     else:
         st.info("Nenhum dado de colaborador ou estagiário encontrado.")
-
 
 # --- 11. MÓDULO ESTAGIÁRIOS ---
 elif menu == "🎓 ESTAGIÁRIOS":
@@ -872,7 +900,6 @@ elif menu == "💸 OUTROS PAGAMENTOS":
 
 
 # --- 14. MÓDULO DASHBOARD FINANCEIRO ---
-# Corrigido: estava no código mas não aparecia no menu. Agora está acessível.
 elif menu == "📊 DASHBOARD FINANCEIRO":
     st.subheader("Análise de Custos e Notas")
 
@@ -880,6 +907,7 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
     df_if = carregar_dados("notas_fiscais_ifood")
 
     if not df_pg.empty:
+        # --- MÉTRICAS ---
         total_acumulado = df_pg['valor_pg'].sum()
         qtd_pagamentos = len(df_pg)
         qtd_ifood = len(df_if)
@@ -891,12 +919,27 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
 
         st.divider()
 
+        # --- GRÁFICOS ---
         col_g1, col_g2 = st.columns(2)
+        
         with col_g1:
             st.markdown("**💰 Gastos por Empresa**")
-            gastos_emp = df_pg.groupby('empresa')['valor_pg'].sum().reset_index()
-            fig_emp = px.pie(gastos_emp, values='valor_pg', names='empresa', hole=0.4,
-                             color_discrete_sequence=px.colors.qualitative.Pastel)
+            # Agrupamento e ordenação para o gráfico de barras
+            gastos_emp = df_pg.groupby('empresa')['valor_pg'].sum().reset_index().sort_values('valor_pg', ascending=True)
+            
+            # Alterado de px.pie para px.bar (horizontal para melhor leitura de valores financeiros)
+            fig_emp = px.bar(
+                gastos_emp, 
+                x='valor_pg', 
+                y='empresa', 
+                orientation='h',
+                text_auto='.2s',
+                color='valor_pg',
+                color_continuous_scale='Greens',
+                labels={'valor_pg': 'Total (R$)', 'empresa': 'Empresa'}
+            )
+            # Remove a barra de cor lateral para simplificar o layout
+            fig_emp.update_coloraxes(showscale=False)
             st.plotly_chart(fig_emp, use_container_width=True)
 
         with col_g2:
@@ -906,13 +949,26 @@ elif menu == "📊 DASHBOARD FINANCEIRO":
                            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             gastos_mes['mes_referencia'] = pd.Categorical(gastos_mes['mes_referencia'], categories=meses_ordem, ordered=True)
             gastos_mes = gastos_mes.sort_values('mes_referencia')
-            fig_mes = px.line(gastos_mes, x='mes_referencia', y='valor_pg', markers=True, line_shape="spline")
+            
+            fig_mes = px.line(
+                gastos_mes, 
+                x='mes_referencia', 
+                y='valor_pg', 
+                markers=True, 
+                line_shape="spline",
+                labels={'valor_pg': 'Valor (R$)', 'mes_referencia': 'Mês'}
+            )
             fig_mes.update_traces(line_color='#8DF768')
             st.plotly_chart(fig_mes, use_container_width=True)
 
+        # --- TABELA DE RANKING ---
+        st.divider()
         st.markdown("**📑 Ranking de Maiores Despesas**")
-        ranking = df_pg.nlargest(5, 'valor_pg')[['empresa', 'motivo', 'valor_pg', 'mes_referencia']]
+        # Garantindo que as colunas existam antes de exibir o ranking
+        colunas_ranking = ['empresa', 'motivo', 'valor_pg', 'mes_referencia']
+        ranking = df_pg.nlargest(5, 'valor_pg')[colunas_ranking]
         st.table(ranking.style.format({"valor_pg": "R$ {:,.2f}"}))
+        
     else:
         st.info("Aguardando dados para gerar indicadores financeiros.")
 
