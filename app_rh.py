@@ -893,10 +893,17 @@ elif menu == "💸 OUTROS PAGAMENTOS":
             valor = row.get('valor_pg') or 0
             with st.expander(f"💰 R$ {valor:,.2f} | {row['empresa']} - {row.get('motivo', 'S/M')}"):
                 col_b1, col_b2 = st.columns(2)
-                col_b1.download_button("📥 Baixar Comprovante", row['arquivo_pg'], row['nome_arquivo'], key=f"dl_pg_{row['id']}")
-                if col_b2.button(f"🗑️ Excluir Registro", key=f"del_pg_{row['id']}"):
-                    executar_sql("DELETE FROM pagamentos_gerais WHERE id=:id", {"id": row['id']})
-                    st.rerun()
+               conteudo_arquivo = carregar_arquivo("pagamentos_gerais", "arquivo_pg", row['id'])
+
+if conteudo_arquivo:
+    col_b1.download_button(
+        label="📥 Baixar Comprovante",
+        data=conteudo_arquivo,
+        file_name=row['nome_arquivo'] if row['nome_arquivo'] else "comprovante.pdf",
+        key=f"dl_pg_{row['id']}"
+    )
+else:
+    col_b1.warning("Arquivo não encontrado")
 
 
 # --- 14. MÓDULO DASHBOARD FINANCEIRO ---
