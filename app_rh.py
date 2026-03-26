@@ -885,6 +885,7 @@ elif menu == "💸 OUTROS PAGAMENTOS":
 
     st.markdown("### 🔍 Histórico de Pagamentos")
     df_pg = carregar_dados("pagamentos_gerais")
+    
     if not df_pg.empty:
         f_emp = st.multiselect("Filtrar Empresa", df_pg['empresa'].unique(), default=df_pg['empresa'].unique())
         df_filtered = df_pg[df_pg['empresa'].isin(f_emp)]
@@ -893,17 +894,25 @@ elif menu == "💸 OUTROS PAGAMENTOS":
             valor = row.get('valor_pg') or 0
             with st.expander(f"💰 R$ {valor:,.2f} | {row['empresa']} - {row.get('motivo', 'S/M')}"):
                 col_b1, col_b2 = st.columns(2)
-               conteudo_arquivo = carregar_arquivo("pagamentos_gerais", "arquivo_pg", row['id'])
+                
+                # BUSCA O ARQUIVO BINÁRIO APENAS QUANDO O EXPANDER É ABERTO
+                conteudo_arquivo = carregar_arquivo("pagamentos_gerais", "arquivo_pg", row['id'])
 
-if conteudo_arquivo:
-    col_b1.download_button(
-        label="📥 Baixar Comprovante",
-        data=conteudo_arquivo,
-        file_name=row['nome_arquivo'] if row['nome_arquivo'] else "comprovante.pdf",
-        key=f"dl_pg_{row['id']}"
-    )
-else:
-    col_b1.warning("Arquivo não encontrado")
+                if conteudo_arquivo:
+                    col_b1.download_button(
+                        label="📥 Baixar Comprovante",
+                        data=conteudo_arquivo,
+                        file_name=row['nome_arquivo'] if row['nome_arquivo'] else "comprovante.pdf",
+                        key=f"dl_pg_{row['id']}"
+                    )
+                else:
+                    col_b1.warning("Arquivo não encontrado")
+                
+                # Botão de excluir (opcional, mantendo padrão dos outros módulos)
+                if col_b2.button("🗑️ Excluir", key=f"del_pg_{row['id']}"):
+                    if executar_sql("DELETE FROM pagamentos_gerais WHERE id = :id", {"id": row['id']}):
+                        st.success("Removido!")
+                        st.rerun()
 
 
 # --- 14. MÓDULO DASHBOARD FINANCEIRO ---
