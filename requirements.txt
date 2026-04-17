@@ -1,8 +1,9 @@
-streamlit
-pandas
-plotly
-sqlalchemy
-psycopg2-binary
+# Versões com pisos mínimos para evitar dependências vulneráveis conhecidas.
+streamlit>=1.37.0
+pandas>=2.2.0
+plotly>=5.22.0
+sqlalchemy>=2.0.30
+psycopg2-binary>=2.9.9
 google-generativeai==0.8.3
-pypdf
-fpdf2
+pypdf>=4.3.0
+fpdf2>=2.7.9

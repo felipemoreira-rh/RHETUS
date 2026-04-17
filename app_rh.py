@@ -5,10 +5,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
 import os
+import html
+import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+
+logger = logging.getLogger(__name__)
+
+# Limite de tamanho para uploads (10 MB). Protege contra uploads maliciosos grandes.
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 
 # --- 1. CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="RH ETUS - Gestão Pro", layout="wide", page_icon="logo.png")
@@ -31,8 +38,9 @@ def get_engine():
     try:
         DB_URL = st.secrets["postgres"]["url"]
         return create_engine(DB_URL, pool_size=10, max_overflow=20, connect_args={"sslmode": "require"})
-    except Exception as e:
-        st.error(f"Erro de conexão: {e}")
+    except Exception:
+        logger.exception("Falha ao conectar ao banco de dados")
+        st.error("Erro de conexão com o banco de dados. Contate o administrador.")
         st.stop()
 
 engine = get_engine()
@@ -45,8 +53,9 @@ def executar_sql(query, params=None):
             conn.execute(text(query), params or {})
         st.cache_data.clear()
         return True
-    except Exception as e:
-        st.error(f"Erro SQL: {e}")
+    except Exception:
+        logger.exception("Erro ao executar SQL")
+        st.error("Erro ao executar operação no banco de dados. Tente novamente.")
         return False
 
 
@@ -58,6 +67,7 @@ TABELAS_PERMITIDAS = {
 }
 
 # Colunas BYTEA por tabela — excluídas do cache para evitar UnserializableReturnValueError
+# Também usado como allowlist ao ler arquivos binários por coluna (previne SQL injection).
 COLUNAS_BINARIAS = {
     "candidatos": ["arquivo_cv"],
     "notas_fiscais_ifood": ["arquivo_nf"],
@@ -68,25 +78,36 @@ COLUNAS_BINARIAS = {
 def carregar_dados(tabela):
     """Carrega dados sem colunas binárias (BYTEA). Use carregar_arquivo() para downloads."""
     if tabela not in TABELAS_PERMITIDAS:
-        st.error(f"Tabela '{tabela}' não permitida.")
+        # Não interpola o nome da tabela diretamente na mensagem para evitar reflexão de input.
+        st.error("Tabela solicitada não está disponível.")
         return pd.DataFrame()
     try:
         colunas_excluir = COLUNAS_BINARIAS.get(tabela, [])
         with engine.connect() as conn:
             if colunas_excluir:
-                # Busca todas as colunas exceto as binárias
+                # Busca todas as colunas exceto as binárias. Nomes de coluna vêm do
+                # metadata do banco (result.keys()), não de input do usuário.
                 result = conn.execute(text(f"SELECT * FROM {tabela} LIMIT 0"))
                 todas = [col for col in result.keys() if col not in colunas_excluir]
                 cols_sql = ", ".join(todas)
                 return pd.read_sql(text(f"SELECT {cols_sql} FROM {tabela} ORDER BY id DESC"), conn)
             return pd.read_sql(text(f"SELECT * FROM {tabela} ORDER BY id DESC"), conn)
-    except Exception as e:
-        st.warning(f"Erro ao carregar '{tabela}': {e}")
+    except Exception:
+        logger.exception("Erro ao carregar tabela %s", tabela)
+        st.warning("Erro ao carregar dados. Tente novamente em instantes.")
         return pd.DataFrame()
 
 def carregar_arquivo(tabela, coluna_binaria, registro_id):
-    """Busca um único arquivo binário pelo id — chamado apenas no momento do download."""
+    """Busca um único arquivo binário pelo id — chamado apenas no momento do download.
+
+    Previne SQL injection validando tanto o nome da tabela quanto o da coluna
+    contra uma allowlist estrita antes de interpolá-los na query.
+    """
     if tabela not in TABELAS_PERMITIDAS:
+        return None
+    colunas_validas = COLUNAS_BINARIAS.get(tabela, [])
+    if coluna_binaria not in colunas_validas:
+        logger.warning("Tentativa de leitura de coluna não permitida: %s.%s", tabela, coluna_binaria)
         return None
     try:
         with engine.connect() as conn:
@@ -96,8 +117,9 @@ def carregar_arquivo(tabela, coluna_binaria, registro_id):
             )
             row = result.fetchone()
             return bytes(row[0]) if row and row[0] else None
-    except Exception as e:
-        st.error(f"Erro ao buscar arquivo: {e}")
+    except Exception:
+        logger.exception("Erro ao buscar arquivo %s.%s (id=%s)", tabela, coluna_binaria, registro_id)
+        st.error("Erro ao buscar arquivo.")
         return None
 
 
@@ -108,15 +130,18 @@ def enviar_email_foto(email_candidato, nome_candidato):
         meu_email = st.secrets["email"]["address"]
         minha_senha = st.secrets["email"]["password"]
 
+        # Escapa o nome do candidato para prevenir injeção de HTML no corpo do e-mail.
+        nome_seguro = html.escape(nome_candidato or "")
+
         msg = MIMEMultipart()
-        msg['Subject'] = f"Boas-vindas Etus! 🚀 - Foto e Curiosidades de {nome_candidato}"
+        msg['Subject'] = f"Boas-vindas Etus! 🚀 - Foto e Curiosidades de {nome_seguro}"
         msg['From'] = meu_email
         msg['To'] = email_candidato
 
         corpo = f"""
         <html>
         <body style="font-family: sans-serif;">
-            <p>Olá, <strong>{nome_candidato}</strong>!</p>
+            <p>Olá, <strong>{nome_seguro}</strong>!</p>
             <p>Parabéns pela sua aprovação em nosso processo seletivo! 🎉<br>
             Agora, gostaríamos de conhecer um pouco mais sobre você.</p>
             <p>Por isso, pedimos que nos envie:</p>
@@ -152,8 +177,9 @@ def enviar_email_foto(email_candidato, nome_candidato):
         server.send_message(msg)
         server.quit()
         return True
-    except Exception as e:
-        st.error(f"Erro ao enviar e-mail: {e}")
+    except Exception:
+        logger.exception("Erro ao enviar e-mail de onboarding")
+        st.error("Erro ao enviar e-mail. Verifique a configuração e tente novamente.")
         return False
 
 
@@ -299,8 +325,9 @@ def inicializar_banco():
         for sql in migrations:
             try:
                 conn.execute(text(sql))
-            except Exception as e:
-                st.warning(f"Migration ignorada: {e}")
+            except Exception:
+                logger.exception("Migration ignorada")
+                st.warning("Migration ignorada (ver logs).")
 
 inicializar_banco()
 
@@ -468,7 +495,9 @@ elif menu == "⚙️ CANDIDATOS":
 
     if not df_c.empty:
         busca = st.text_input("🔍 Buscar candidato pelo nome...", placeholder="Digite para filtrar...")
-        df_base = df_c[df_c['candidato'].str.contains(busca, case=False, na=False)] if busca else df_c
+        # regex=False impede que o texto digitado seja interpretado como expressão regular
+        # (evita ReDoS e correspondências acidentais em nomes com metacaracteres).
+        df_base = df_c[df_c['candidato'].str.contains(busca, case=False, na=False, regex=False)] if busca else df_c
 
         vagas_com_candidatos = sorted(df_base['vaga_vinculada'].dropna().unique().tolist())
 
@@ -826,12 +855,15 @@ elif menu == "🍔 IFOOD":
 
             if st.form_submit_button("SALVAR NOTA IFOOD"):
                 if uni:
-                    executar_sql(
-                        "INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e, :m, :a, :n, :d)",
-                        {"e": eni, "m": mni, "a": uni.read(), "n": uni.name, "d": date.today()}
-                    )
-                    st.success("Nota salva!")
-                    st.rerun()
+                    if getattr(uni, "size", 0) > MAX_UPLOAD_SIZE_BYTES:
+                        st.error(f"Arquivo excede o limite de {MAX_UPLOAD_SIZE_BYTES // (1024*1024)} MB.")
+                    else:
+                        executar_sql(
+                            "INSERT INTO notas_fiscais_ifood (empresa, mes_referencia, arquivo_nf, nome_arquivo, data_upload) VALUES (:e, :m, :a, :n, :d)",
+                            {"e": eni, "m": mni, "a": uni.read(), "n": uni.name, "d": date.today()}
+                        )
+                        st.success("Nota salva!")
+                        st.rerun()
 
     df_if = carregar_dados("notas_fiscais_ifood")
     if not df_if.empty:
@@ -872,16 +904,19 @@ elif menu == "💸 OUTROS PAGAMENTOS":
 
             if st.form_submit_button("REGISTRAR PAGAMENTO"):
                 if upg:
-                    executar_sql("""
-                        INSERT INTO pagamentos_gerais
-                        (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload, valor_pg, data_envio, data_pagamento, motivo)
-                        VALUES (:e, 'Geral', :m, :a, :n, :d, :v, :de, :dp, :mo)
-                    """, {
-                        "e": epg, "m": mpg, "a": upg.read(), "n": upg.name,
-                        "d": date.today(), "v": val_pg, "de": d_envio, "dp": d_pago, "mo": motivo_pg
-                    })
-                    st.success("Pagamento registrado!")
-                    st.rerun()
+                    if getattr(upg, "size", 0) > MAX_UPLOAD_SIZE_BYTES:
+                        st.error(f"Arquivo excede o limite de {MAX_UPLOAD_SIZE_BYTES // (1024*1024)} MB.")
+                    else:
+                        executar_sql("""
+                            INSERT INTO pagamentos_gerais
+                            (empresa, categoria, mes_referencia, arquivo_pg, nome_arquivo, data_upload, valor_pg, data_envio, data_pagamento, motivo)
+                            VALUES (:e, 'Geral', :m, :a, :n, :d, :v, :de, :dp, :mo)
+                        """, {
+                            "e": epg, "m": mpg, "a": upg.read(), "n": upg.name,
+                            "d": date.today(), "v": val_pg, "de": d_envio, "dp": d_pago, "mo": motivo_pg
+                        })
+                        st.success("Pagamento registrado!")
+                        st.rerun()
 
     st.markdown("### 🔍 Histórico de Pagamentos")
     df_pg = carregar_dados("pagamentos_gerais")
